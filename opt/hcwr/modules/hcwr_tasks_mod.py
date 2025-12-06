@@ -6,7 +6,9 @@
 # GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
-#                                                                                             
+#
+# File version:   1.0.0
+# 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
 # Wochenfazit URL:                                                                            

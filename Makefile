@@ -28,10 +28,14 @@ NAME	      := hcwr
 PREFIX        := /
 BASE_DIR      := opt/$(NAME)
 
-SHARE_DIR     := $(PREFIX)/share/$(NAME)
+SHARE_DIR     := $(BASE_DIR)/share
 
 BIN_DIR       := $(BASE_DIR)/bin
 MOD_DIR       := $(BASE_DIR)/modules
+
+SRC_BIN	      := opt/$(NAME)/bin
+SRC_MOD	      := opt/$(NAME)/modules
+SRC_SHARE     := opt/$(NAME)/share
 
 INSTALL_BIN   := install -m 755
 INSTALL_MOD   := install -m 644
@@ -48,6 +52,9 @@ showvars:
 	@echo "BIN_DIR    = $(BIN_DIR)"
 	@echo "MOD_DIR    = $(MOD_DIR)"
 	@echo "SHARE_DIR  = $(SHARE_DIR)"
+	@echo "SRC_BIN    = $(SRC_BIN)"
+	@echo "SRC_MOD    = $(SRC_MOD)"
+	@echo "SRC_SHARE  = $(SRC_SHARE)"
 
 # ------------------------------------------------------------
 # Installation
@@ -58,14 +65,15 @@ install:
 	@mkdir -p "$(PREFIX)/$(MOD_DIR)"
 	@mkdir -p "$(PREFIX)/$(SHARE_DIR)"
 
-	@$(INSTALL_BIN) "$(BIN_DIR)/$(NAME)"            "$(PREFIX)$(BIN_DIR)/"
-	@$(INSTALL_MOD) "$(MOD_DIR)/$(NAME)_*_mod.py"   "$(PREFIX)/$(MOD_DIR)/"
-	@$(INSTALL_MOD) "$(SHARE_DIR)/$(NAME)-Logo.jpg" "$(PREFIX)$(SHARE_DIR)/"
+	@$(INSTALL_BIN) $(SRC_BIN)/$(NAME)            $(PREFIX)/$(BIN_DIR)/
+	@$(INSTALL_MOD) $(SRC_MOD)/$(NAME)_*.py   $(PREFIX)/$(MOD_DIR)/
+	@$(INSTALL_MOD) $(SRC_SHARE)/$(NAME)-Logo.jpeg $(PREFIX)/$(SHARE_DIR)/
 
 	@echo "✔ Installation complete!"
-	@echo "→ Binary:   $(PREFIX)/$(BIN_DIR)/certtool-summary"
-	@echo "→ Modules:  $(PREFIX)/$(MOD_DIR)/$(NAME)_*_mod.py"
-	@echo "→ Logo:     $(PREFIX)/$(SHAR_DIR)/$(NAME)-Logo.jpeg"
+	@echo "→ Binary:   $(PREFIX)/$(BIN_DIR)/$(NAME)"
+	@echo "→ Modules:  "
+	@ls $(PREFIX)/$(MOD_DIR)/$(NAME)_*.py
+	@echo "→ Logo:     $(PREFIX)/$(SHARE_DIR)/$(NAME)-Logo.jpeg"
 
 # ------------------------------------------------------------
 # Install geaCal plugin into hcwr
@@ -73,34 +81,38 @@ install:
 install2hcwr:
 	@echo "📦 Installing geaCal plugin into hcwr..."
 
-	@if [ ! -d ./GaussEasterAlgorithm ]; then
-		echo "❌ ERROR: No ./GaussEasterAlgorithm repo found!"
-		@command -v git >/dev/null 2>&1 || { \
+	@if [ ! -d ./GaussEasterAlgorithm ]; then \
+		echo "❌ ERROR: No ./GaussEasterAlgorithm repo found!"; \
+		if ! command -v git >/dev/null 2>&1; then \
 			echo "❌ ERROR: git is not installed!"; \
 			exit 1; \
-		}
-
-		@echo "✔ git found"
-		@echo "Trying to clone it from github.com"
-
-		git clone https://github.com/GhostCoder74/GaussEasterAlgorithm.git
-		@echo "✔ Successfully cloned from GitHub!"
+		fi; \
+		echo "✔ git found"; \
+		echo "➡ Cloning from GitHub..."; \
+		git clone https://github.com/GhostCoder74/GaussEasterAlgorithm.git; \
+		echo "✔ Successfully cloned from GitHub!"; \
 	fi
-	# Ensure plugin directory exists
-	@mkdir -p "$(PREFIX)/$(MOD_DIR)/"
 
-	@$(INSTALL_BIN) "usr/local/bin/geaCal*" "$(PREFIX)$(BIN_DIR)/"
-	# Copy Python plugin modules (*.py)
-	@cp -v ./GaussEasterAlgorithm/modules/geaCal_*_mod.py "$(PREFIX)/$(MOD_DIR)/"
+	@mkdir -p "$(PREFIX)$(MOD_DIR)/lang"
+	@mkdir -p "$(PREFIX)$(SHARE_DIR)/geaCal"
+	@mkdir -p "$(PREFIX)$(BIN_DIR)/"
 
-	# Optional: copy README or data files
+	@echo '🔧 Entferne Kommentar vor MODULE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..\/modules"))'
+	@sed -i 's/^#\(MODULE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..\/modules"))\)/\1/' ./GaussEasterAlgorithm/usr/local/bin/geaCal
+
+	@$(INSTALL_BIN) ./GaussEasterAlgorithm/usr/local/bin/geaCal* "$(PREFIX)$(BIN_DIR)/"
+	@cp -v ./GaussEasterAlgorithm/modules/geaCal_*_mod.py "$(PREFIX)$(MOD_DIR)/"
+	@cp -v ./GaussEasterAlgorithm/modules/lang/*.json "$(PREFIX)$(MOD_DIR)/lang/"
+
 	@if [ -f GaussEasterAlgorithm/README.md ]; then \
-		cp -v ./GaussEasterAlgorithm/README.md "$(PREFIX)/$(MOD_DIR)/"; \
+		cp -v ./GaussEasterAlgorithm/README.md "$(PREFIX)$(SHARE_DIR)/geaCal/"; \
 	fi
 
-	@echo "✔ geaCal plugin installed successfully into:"
-	@echo "  $(PREFIX)/$(BIN_DIR)"
-	@echo "  $(PREFIX)/$(MOD_DIR)"
+	@echo "✔ geaCal plugin installed successfully!"
+	@echo "Content of $(PREFIX)$(BIN_DIR):"
+	@ls -lohg $(PREFIX)$(BIN_DIR)/geaCal*
+	@echo "Modules:"
+	@tree $(PREFIX)$(MOD_DIR)/
 # ------------------------------------------------------------
 # Uninstall
 # ------------------------------------------------------------
@@ -129,6 +141,17 @@ uninstall:
 
 	@echo "✔ Removal complete!"
 
+# ------------------------------------------------------------
+# Install geaCal plugin into hcwr
+# ------------------------------------------------------------
+uninstall2hcwr:
+	@echo "📦 Removing geaCal plugin from hcwr..."
+
+	@rm -vr "$(PREFIX)$(MOD_DIR)/lang"
+	@rm -v   $(PREFIX)$(MOD_DIR)/geaCal_*.py
+	@rm -vr "$(PREFIX)$(SHARE_DIR)/geaCal"
+	@rm -v   $(PREFIX)$(BIN_DIR)/geaCal*
+	@echo "✔ Removal geaCal plugin successfully!"
 # ------------------------------------------------------------
 # Show install tree (preview)
 # ------------------------------------------------------------

@@ -41,7 +41,6 @@ locale.setlocale(locale.LC_ALL, '')
 
 class myGlobals:
     args = None
-
     # The VERSION variable is important for version check
     VERSION = "2.0.1-beta"
 
@@ -172,10 +171,8 @@ class myGlobals:
 
     # Pattern
     CONTRACT_PATTERN = re.compile(r"^([^#:]+)[ ]+#([1-9][0-9]{0,4}):$")
-
     # SEARCH_EXCLUDE for function "my_tasks" in ../modules/hcwr_tasks_mod.py
     SEARCH_EXCLUDE = "\!C=Temp|\!C=Feiertag|\!C=Urlaub|\!C=Krank*|\!C=Zeitkonto*|\!C=Privat"
-
     # Prüft, ob ein String eine Uhrzeit im Format HH:MM oder HH:MM:SS enthält:
     REGEX_TIME = re.compile(r"\b([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\b")
 
@@ -221,14 +218,14 @@ class myGlobals:
             "Unternehmen*": 352
     }
     INTERN_PROJEKT_ID_MAP = {
-            'Temp'                          :[1,'X'  ,'X'],
-            'Feiertag'                      :[2,'000','PH'],   # Public Holiday (Gesetzlicher Feiertag)
-            'Urlaub'                        :[3,'001','VAC'],  # Vacation       (Urlaubstag)
-            'Krank'                         :[4,'002','AU'],   # AU             (Arbeitsunfähigkeit)
-            'Krankengeldbezug'              :[5,'003','KG'],   
-            'Zeitkonto Übertrag vom Vorjahr':[6,'004','ZKÜ'],
-            'Privat'                        :[7,'005','PRIV'],
-            'Zeitkonto Abzug/Ausgezahlt'    :[8,'006','ZKA']
+            'Temp'                          :[1,'X'  ,'X'   , 'Temp'],
+            'Feiertag'                      :[2,'000','PH'  , 'Feiertag'],          # Public Holiday (Gesetzlicher Feiertag)
+            'Urlaub'                        :[3,'001','VAC' , 'Urlaub'],            # Vacation       (Urlaubstag)
+            'Krank'                         :[4,'002','AU'  , 'AU'],                # AU             (Arbeitsunfähigkeit)
+            'Krankengeldbezug'              :[5,'003','KG'  , 'Krankengeldbezug'],   
+            'Zeitkonto Übertrag vom Vorjahr':[6,'004','ZKÜ' , 'Zeitkonto Übertrag'],
+            'Privat'                        :[7,'005','PRIV', 'Privat'],
+            'Zeitkonto Abzug/Ausgezahlt'    :[8,'006','ZKA' , 'Zeitkonto Abzug']
     }
     # Example:
     # WDAYHOURS_MAP = {

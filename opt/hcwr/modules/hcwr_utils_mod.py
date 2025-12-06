@@ -6,7 +6,9 @@
 # GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
-#                                                                                             
+#
+# File version:   1.0.0
+# 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
 # Wochenfazit URL:                                                                            
@@ -31,6 +33,20 @@ from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
 # Set locale for decimal formatting
 locale.setlocale(locale.LC_ALL, '')
 HCWR_GLOBALS.DECIMAL_POINT = locale.localeconv()['decimal_point']
+
+def hours_to_hms(hours_str, MODE=2):
+    hours = float(hours_str.replace(",", "."))
+    td = timedelta(hours=hours)
+    total_seconds = int(td.total_seconds())
+    h = total_seconds // 3600
+    m = (total_seconds % 3600) // 60
+    s = total_seconds % 60
+    if MODE == 3:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    elif MODE == 2:
+        return f"{h:02d}:{m:02d}"
+    elif MODE == 0:
+        return f"{h:02d}"
 
 def check_directory_exists(file_path):
     """Prüft ob ein Verzeichnis Pfad exsistiert und ein wirklich ein Verzeichnis ist!"""

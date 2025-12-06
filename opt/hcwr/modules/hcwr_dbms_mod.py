@@ -200,7 +200,8 @@ def auto_migration():
     """
     fname = get_function_name()
 
-    info(f"Running Automigration ...")
+    if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+        info(f"Running Automigration ...")
 
     success = False
     db_key_structure = get_db_key_structure()
@@ -238,12 +239,23 @@ def auto_migration():
                 "Sachbearbeitung andere*": "Sacharbeit andere*"
             }
 
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                info(f"mapping = {mapping}")
+                info(f"changes_made = {changes_made}")
+
             for old_key, new_key in mapping.items():
                 if HCWR_GLOBALS.CFG.has_option("ProjectIDs", old_key):
-                    value = HCWR_GLOBALS.CFG.get("ProjectIDs", old_key)
+                    value = HCWR_GLOBALS.CFG.get("ProjectIDs", old_key)                    
+                    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                        info(f"value old_key = {value}")
+                        info(f"old_key = {old_key}")
+                        info(f"new_key = {new_key}")
                     HCWR_GLOBALS.CFG.remove_option("ProjectIDs", old_key)
                     HCWR_GLOBALS.CFG.set("ProjectIDs", new_key, value)
                     changes_made = True
+
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                info(f"changes_made = {changes_made}")
 
             if changes_made:
                 success = False
@@ -270,7 +282,8 @@ def auto_migration():
             cursor = conn.cursor()
             debug(f"db_key_structure = {db_key_structure}")
             debug(f"len(HCWR_GLOBALS.PROJECTS_ID_MAP) = {len(HCWR_GLOBALS.PROJECTS_ID_MAP)}")
-            if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP) - 5 : 
+            #if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP) - 5 : 
+            if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP): 
                 # TODO: Bessere Zuordnung welches DB-Schema genutzt wird bauen ( Quick-FIX: -5 = - Anzahl der Oberkategorien )
                 if resA != None and int(resA) == 322:
                     sql_update = "UPDATE projects SET description = '  Sacharbeit abrechenbar' WHERE id = 322;"
@@ -296,7 +309,8 @@ def auto_migration():
                     conn.commit()
                 info("Projektbeschreibungen in time.db erfolgreich aktualisiert.")
             else:
-                info("Projektbeschreibungen in time.db sind aktuell.")
+                if HCWR_GLOBALS.args.verbose:
+                    info("Projektbeschreibungen in time.db sind aktuell.")
             success = True
         except Exception as e:
             success = False

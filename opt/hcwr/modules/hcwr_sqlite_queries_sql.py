@@ -1,3 +1,21 @@
+# -----------------------------------------------------------------------------------------   
+# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter            
+# File:           hcwr_sqlite_queries_sql.py
+# Authors:        Christian Klose <cklose@intevation.de>                                      
+#                 Raimund Renkert <rrenkert@intevation.de>                                    
+# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
+# Copyright (c) 2024-2026 by Intevation GmbH                                                  
+# SPDX-License-Identifier: GPL-2.0-or-later                                                   
+#
+# File version:   1.0.0
+# 
+# This file is part of "hcwr - heco Weekly Report"                                            
+# Do not remove this header.                                                                  
+# Wochenfazit URL:                                                                            
+# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit    
+# Header added by https://github.com/GhostCoder74/Set-Project-Headers                         
+# -----------------------------------------------------------------------------------------
+#
 # python file for sql query definitions for sqlite
 # LOA: Steht für "Leave of Absence" und wird im Personalwesen für 
 #      eine Beurlaubung oder Freistellung von der Arbeit verwendet.
@@ -139,7 +157,7 @@ entry_update = """
 """
 
 check_db_key_structure = """
-    SELECT key FROM projects where (description LIKE '├─%' or description like '└─%') and not (description LIKE '  %' or description like '  %');
+    SELECT key FROM projects where (description LIKE '├─%' or description like '└─%' or key LIKE '3%') and not (description LIKE '  %' or description like '  %');
 """
 
 create_contracts_tbl = """

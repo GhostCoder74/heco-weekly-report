@@ -6,7 +6,9 @@
 # GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
-#                                                                                             
+#
+# File version:   1.0.0
+# 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
 # Wochenfazit URL:                                                                            
@@ -25,6 +27,72 @@ from hcwr_globals_mod import HCWR_GLOBALS
 from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name, debug_sql
 from hcwr_utils_mod import get_wday_short_name, add_decimal_hours, command_exists
 
+# set public holidays for this and next week
+
+def insert_holiday_entries(db_connection, year, reference_date=None):
+    """
+    Fügt die Feiertage der aktuellen und nächsten Woche
+    automatisch in die entries-Tabelle ein.
+
+    Voraussetzungen:
+    - get_holidays_this_and_next_week() ist bereits implementiert
+    - project_id für Feiertage = 2
+    """
+
+    fname = get_function_name()
+
+    # Feiertage ermitteln
+    weeks = get_holidays_this_and_next_week(year, reference_date)
+
+    if not reference_date is None:
+        year = datetime.strptime(reference_date, "%Y-%m-%d").date().year
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\nweeks = {weeks}")
+        info(f"year = {year}")
+
+    exists_sql = HCWR_GLOBALS.DB_QUERIES.LOA_exists_sql
+    delete_sql = HCWR_GLOBALS.DB_QUERIES.LOA_delete_sql
+    update_sql = HCWR_GLOBALS.DB_QUERIES.LOA_update_sql
+    insert_sql = HCWR_GLOBALS.DB_QUERIES.LOA_insert_sql
+
+    cursor = db_connection.cursor()
+
+    project_id = HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.get('Feiertag')[0]
+
+    # Helper: Einfügen eines Feiertags
+    def insert_one(date_str, name):
+        start_ts = f"{date_str} 00:00:00"
+        stop_ts  = f"{date_str} 23:59:59"
+        desc     = f"Feiertag: {name}"
+
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"weeks = {weeks}")
+            info(f"sql={debug_sql(insert_sql, (project_id, start_ts, stop_ts, desc))}")
+        else:
+            cursor.execute(insert_sql, (project_id, start_ts, stop_ts, desc))
+
+    # Feiertage schreiben
+    for (date_str, name) in weeks["current_week"]:
+        insert_one(date_str, name)
+
+    for (date_str, name) in weeks["next_week"]:
+        insert_one(date_str, name)
+
+    # Transaktion abschließen
+    db_connection.commit()
+    cursor.close()
+    result = {
+        "inserted_current_week": weeks["current_week"],
+        "inserted_next_week": weeks["next_week"]
+    }
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"result = {result}")
+        sys.exit(0)
+    else:
+        return result
+
 # geaCal Implementierung für Feiertags Entries
 def get_holidays_this_and_next_week(year, reference_date=None):
     """
@@ -42,6 +110,9 @@ def get_holidays_this_and_next_week(year, reference_date=None):
     if not reference_date is None:
         year = datetime.strptime(reference_date, "%Y-%m-%d").date().year
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\nresult = {result}")
+
     # Checking for geaCal exists
     if not command_exists("geaCal"):
         warning("Plugin geaCal not found!", "No holyday check possible!")
@@ -56,6 +127,8 @@ def get_holidays_this_and_next_week(year, reference_date=None):
     except Exception as e:
         raise RuntimeError(f"geaCal konnte nicht ausgeführt werden: {e}")
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"output = {output}")
     # --- 2. JSON parsen ---
     try:
         data = json.loads(output)
@@ -63,6 +136,8 @@ def get_holidays_this_and_next_week(year, reference_date=None):
     except Exception as e:
         raise ValueError(f"Ungültiges JSON von geaCal erhalten: {e}")
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"data = {data}")
     # --- 3. Referenzdatum bestimmen ---
     if reference_date is None:
         reference_date = date.today()
@@ -77,6 +152,12 @@ def get_holidays_this_and_next_week(year, reference_date=None):
     if next_week > 52:
         next_week = 1
         next_year += 1
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"year_now = {year_now}")
+        info(f"week_now = {week_now}")
+        info(f"next_week = {next_week}")
+        info(f"next_year = {next_year}")
 
     # --- 4. Feiertage der beiden Wochen filtern ---
     for hdate_str, name in holidays:
@@ -525,7 +606,7 @@ def insert_LOA_entries(db_connection, hstart_date, pname="Urlaub", hstop_date=No
                     cursor.execute(sql, (start_ts, stop_ts, desc, entry_id))
 
             lbl = "entfernt" if DEL_MODE else "aktualisiert"
-            info(f"{msg_lbl_map[pname][2]} Eintrag {lbl}: {date_str}")
+            info(f"{msg_lbl_map[pname][3]} Eintrag {lbl}: {date_str}")
 
             return "updated"
 
@@ -539,7 +620,7 @@ def insert_LOA_entries(db_connection, hstart_date, pname="Urlaub", hstop_date=No
         # INSERT
         # ------------------------------------------------------------------
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            info(f"[INSERT] {msg_lbl_map[pname][2]} {date_str}")
+            info(f"[INSERT] {msg_lbl_map[pname][3]} {date_str}")
             info(f"sql={debug_sql(insert_sql, (project_id, start_ts, stop_ts, desc))}")
 
             if not HCWR_GLOBALS.args.dry_run:
@@ -549,7 +630,7 @@ def insert_LOA_entries(db_connection, hstart_date, pname="Urlaub", hstop_date=No
         else: 
             cursor.execute(insert_sql, (project_id, start_ts, stop_ts, desc))
         
-        info(f"{msg_lbl_map[pname][2]} eingetragen: {date_str}")
+        info(f"{msg_lbl_map[pname][3]} eingetragen: {date_str}")
 
         return "inserted"
 
