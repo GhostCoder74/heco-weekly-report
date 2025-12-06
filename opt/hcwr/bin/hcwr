@@ -8,8 +8,6 @@
 # Copyright (c) 2024-2026 by Intevation GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.0
-# 
 # This file is part of "hcwr - heco Weekly Report"
 # Do not remove this header.
 # Wochenfazit URL:
@@ -151,9 +149,10 @@ parser.add_argument(
     help="Displays all stored contract keywords from the database"
 )
 parser.add_argument("-n", "--dry-run", help="Output only, no saving", action='store_true')
-parser.add_argument("-v", "--version", help="Versions info", action='store_true')
+parser.add_argument("-V", "--version", help="Versions info", action='store_true')
+parser.add_argument("-v", "--verbose", help="Verbose Mode for more output", action='store_true')
 parser.add_argument("-a", "--all-jobs", help="Get all!", action='store_true')
-parser.add_argument("-A", "--absence", help=ABSENCE_HELP_TXT, default='Urlaub',metavar="PH | AU | KG | ZKÜ=<H:M> | ZKA=<H:M>")
+parser.add_argument("-A", "--absence", help=ABSENCE_HELP_TXT ,metavar="PH | AU | KG | ZKÜ=<H:M> | ZKA=<H:M>")
 parser.add_argument("-J", "--job-entries", help="To use in conjunction with -s/--search for searching in Job-Entries", action='store_true')
 parser.add_argument("-j", "--json", help="Get JSON output, by using --json and --job-entries", action='store_true')
 parser.add_argument("-B", "--start-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
@@ -209,7 +208,7 @@ elif MODULE_DIR not in sys.path:
         from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_utils_mod")
-        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd
+        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_wfout_mod")
         from hcwr_wfout_mod import generate_report, handle_output
@@ -224,7 +223,7 @@ elif MODULE_DIR not in sys.path:
         from hcwr_hcwrd_mod import hcwrd_main, overhours_main
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_plugins_mod")
-        from hcwr_plugins_mod import get_holidays_this_and_next_week, insert_LOA_entries
+        from hcwr_plugins_mod import get_holidays_this_and_next_week, insert_LOA_entries, insert_holiday_entries
     except Exception as e:
         warning("Could not load modules from:",MODULE_DIR,"ERROR")
         print(f"Details: {e}")
@@ -232,8 +231,8 @@ elif MODULE_DIR not in sys.path:
 
 HCWR_GLOBALS.args = parser.parse_args()
 
-info(os.path.basename(sys.argv[0]))
-
+if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+    info(os.path.basename(sys.argv[0]))
 
 if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
     debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
@@ -247,55 +246,6 @@ if HCWR_GLOBALS.args.version:
     version()
     sys.exit(0)
 
-# Portet to ../modules/hcwr_dbg_mod.py
-#def debug(msg):
-# [...]
-#
-#def info(msg_a, msg_b="", type="Info"):
-# [...]
-#
-#def warning(msg_a, msg_b, type="Warning"):
-# [...]
-#
-#
-## For colorized output
-#colorama.init(autoreset=True)
-## Definition of colors
-#def get_fore_color(color):
-# [...]
-#
-
-# Portet to ../modules/hcwr_remote_mod.py
-#def ssh_config_check():
-# [...]
-#
-#def checkNfetch_file_from_NIS(remote_path, local_dest, ssh_host="hq"):
-# [...]
-#
-
-# Portet to ../modules/hcwr_config_mod.py
-#def update_config_comments():
-# [...]
-#
-
-# Portet to ../modules/hcwr_dbms_mod.py
-## Prüft welche "Kürzel" verwentet werden, entsprechend der Vorlage aus:
-## /home/projects/Intern/hecokwreport.hg/template:
-##   heco.projects.sql
-##   heco.projects-v2.sql
-##   heco.projects-ms.sql
-#def get_db_key_structure():
-# [...]
-#
-## Automigrate Funktion im alte Daten und Config zu migrieren:
-#def auto_migration():
-# [...]
-#
-# Portet to ../modules/hcwr_utils_mod.py
-# def check_user_in_group(group_name):
-# [...]
-#
-
 if HCWR_GLOBALS.GROUP:
     try:
         group_ok = check_user_in_group(HCWR_GLOBALS.GROUP)
@@ -308,126 +258,6 @@ if HCWR_GLOBALS.GROUP:
 if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
     HCWR_GLOBALS.args.group = HCWR_GLOBALS.GROUP
 
-# Portet to ../modules/hcwr_config_mod.py
-## Determine current week and year if not provided
-#def parse_week_env(timestamp):
-# [...]
-#
-
-# Portet to ../modules/hcwr_dbms_mod.py
-#def init_heco(kw=None):
-# [...]
-#
-#def initialize_contracts_db():
-# [...]
-#
-#def get_contract_id(entry, db_path=None):
-# [...]
-#
-#def show_contract_keywords():
-# [...]
-#
-#def delete_contract_keyword():
-# [...]
-#
-#def set_contract_keywords(keywords):
-# [...]
-#
-#def is_current_week_and_complete(db_path, year, kw):
-# [...]
-#
-
-# Portet to ../modules/hcwr_utils_mod.py 
-#def input_with_prefill(prompt, prefill, end='\n'):
-# [...]
-#
-#def check_directory_exists(file_path):
-# [...]
-#
-#def format_decimal(value):
-# [...]
-#
-
-# Portet to ../modules/hcwr_config_mod.py
-# def get_calendar_week(date_str):
-# [...]
-#
-
-
-# Portet to ../modules/hcwr_config_mod.py
-#def extract_name():
-# [...]
-#
-#def get_or_create_projects_id_map():
-# [...]
-#
-#def get_or_create_wdayhours_map():
-# [...]
-#
-#def set_default_cons(interactive=False):
-# [...]
-#
-#def get_config(call_from=None):
-# [...]
-#
-#def set_weekhours():
-# [...]
-#
-#def set_heco_db_path():
-# [...]
-#
-#def configure_interactive():
-# [...]
-#
-#def set_first_workday():
-# [...]
-#
-#def update_config(new_config):
-# [...]
-#
-
-# Portet to ../modules/hcwr_config_mod.py
-#def isoweek(date_string, year, week):
-# [...]
-#
-#def get_weekday_hours_per_day(conn, year, week):
-# [...]
-#
-
-# Portet to ../modules/hcwr_extexec_mod.py
-#def get_kw_overhours(kw):
-# [...]
-#
-# def get_kw_overhours_add(kw):
-# [...]
-#
-
-# Portet to ../modules/hcwr_dbms_mod.py
-#def berechne_abwesenheiten(conn, year, week):
-# [...]
-#
-
-# Portet to ../modules/hcwr_utils_mod.py
-## Check if wday is Krank, Urlaub, Feiertag
-#def has_wday_absence(conn, weekday_num, year, week):
-# [...]
-#
-#def get_wday_diff(conn, wdays, year, week):
-# [...]
-#
-
-# Portet to ../modules/hcwr_dbms_mod.py
-## Prepare SQL query
-#def merge_results(result):
-# [...]
-#
-#def get_project_id(cursor, category):
-# [...]
-#
-#def get_UK_and_UUK(conn, base_sql, category, params):
-# [...]
-#
-
 if os.path.exists(HCWR_GLOBALS.CFG_FILE):
     get_config("read_config")
     if not auto_migration() and HCWR_GLOBALS.args.init_heco is None:
@@ -435,7 +265,6 @@ if os.path.exists(HCWR_GLOBALS.CFG_FILE):
 else:
     warning(f"Keine Konfigurationsdatei gefunden:", HCWR_GLOBALS.CFG_FILE)
     # Automigration vorher durchlaufen lassen, falls es Änderungen gab die angepassterden müssen:
-
     if not auto_migration():
         sys.exit(1)
     else:
@@ -499,16 +328,6 @@ if not HCWR_GLOBALS.args.absence:
     
     
     HCWR_GLOBALS.PROJECTS_ID_MAP = get_or_create_projects_id_map()
-    # Example:
-    # WDAYHOURS_MAP = {
-    #     "Mo": 8.5,
-    #     "Di": 8.5,
-    #     "Mi": 8.5,
-    #     "Do": 8.5,
-    #     "Fr": 6.0,
-    #     "Sa": 0.0,
-    #     "So": 0.0
-    # }
     HCWR_GLOBALS.WDAYHOURS_MAP  = get_or_create_wdayhours_map()
     
     if HCWR_GLOBALS.args.configure:
@@ -526,123 +345,129 @@ if int(HCWR_GLOBALS.DBG_LEVEL)==1:
     debug (f"db_path = {db_path}")
 conn = HCWR_GLOBALS.DBMS.connect(db_path)
 
-# -----------------------------------------------------------------------
-# Handling for: 
-# ZKÜ, ZKA, Urlaub, AU, KG, Privat 
-Absence = HCWR_GLOBALS.args.absence
-match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}):([0-9]{2})", HCWR_GLOBALS.args.absence)
-failedmatch = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=?", HCWR_GLOBALS.args.absence)
-H = None  # Hours for ZKÜ or ZKA
-M = None  # Minutes for ZKÜ or ZKA
-info(f"match = {match}")
-info(f"failedmatch = {failedmatch}")
-
-if not Absence in "PH VAC AU KG":
-    if match:
-        Absence, H, M = match.group(1), match.group(2), match.group(3)
-    elif failedmatch:
-        Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
-        warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
-        sys.exit(1)
-
-
-if (Absence and HCWR_GLOBALS.args.start_day) or (Absence in "AU ZKÜ ZKA PRIV" and H and M):
-    start_date = HCWR_GLOBALS.args.start_day
-    MODE = HCWR_GLOBALS.args.delete
-    if Absence in "ZKÜ": # Set start_date ONLY for ZKÜ Entry to "<YEAR>-01-01"
-        msgZ = "eintragen oder aktualisieren, falls vorhanden"
-        if MODE:
-            msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "LÖSCHEN" + get_fore_color("RED") + ", falls vorhanden"
-        if start_date is None:
-            date_obj = datetime.now()
-            year = date_obj.year
-            target_date = f"{year}-01-01"
-
-            # korrekt:
-            target_date_obj = datetime.strptime(target_date, "%Y-%m-%d")
-
-            if (date_obj.year == target_date_obj.year and 
-                date_obj.month != target_date_obj.month and 
-                date_obj >= target_date_obj):
-                warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + get_fore_color("YELLOW") + Style.BRIGHT + f"{target_date}" + get_fore_color("RED"), " liegt in der Vergangenheit!")
-                warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
-            else:
-                info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("WHITE") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("WHITE") + f"{msgZ}!")
-            
-        else:
-            date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
-            warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
-        prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
-        answer = input_with_prefill(prompt, "", "").strip().lower()
-        if not answer in ("", "j", "ja", "y", "yes"):
+if HCWR_GLOBALS.args.absence:
+    # -----------------------------------------------------------------------
+    # Handling for: 
+    # ZKÜ, ZKA, Urlaub, AU, KG, Privat 
+    Absence = HCWR_GLOBALS.args.absence
+    decimal_match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}[.,][0-9])", Absence)
+    if decimal_match:
+        x = decimal_match.group(2).replace(",", ".")  # standardisiere Komma → Punkt
+        Absence = HCWR_GLOBALS.args.absence.split("=")[0] + "=" + hours_to_hms(x)
+    debug(f"Absence = {Absence}")
+    match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}):([0-9]{2})", Absence)
+    failedmatch = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=?", Absence)
+    H = None  # Hours for ZKÜ or ZKA
+    M = None  # Minutes for ZKÜ or ZKA
+    debug(f"match = {match}")
+    debug(f"failedmatch = {failedmatch}")
+    
+    if not Absence in "PH VAC AU KG":
+        if match:
+            Absence, H, M = match.group(1), match.group(2), match.group(3)
+        elif failedmatch:
+            Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
+            warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
             sys.exit(1)
-        else:
-            print()
-
-        year = date_obj.year
-        start_date = f"{year}-01-01"
-
-    stop_date  = HCWR_GLOBALS.args.stop_day
-    info(f"Absence = {Absence}")
-    if match:
-        if stop_date:
-            stop_date = None
-            warning(f"It's not allowed to set option -E with", f"-A {Absence}, it will be ignored!")
-
-    for p, values in HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.items():
-        if Absence == p:
-            PNAME = p
-            break
-        elif Absence == values[2]:
-            PNAME = p
-            break
-
-    if Absence in "AU ZKA PRIV" and H and M: # start_date MUST be set for AU, ZKA, PRIV Entry
-        if start_date:
-            next_start_time = start_date
-        else:
-            next_start_time = datetime.today().strftime('%Y-%m-%d') 
-        ask_date = next_start_time
-        if Absence in "AU PRIV":
-            result = get_last_entry(conn)
-            next_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S') 
-            fld = "stop_time"
+    
+    
+    if (Absence and HCWR_GLOBALS.args.start_day) or (Absence in "AU ZKÜ ZKA PRIV" and H and M):
+        start_date = HCWR_GLOBALS.args.start_day
+        MODE = HCWR_GLOBALS.args.delete
+        if Absence in "ZKÜ": # Set start_date ONLY for ZKÜ Entry to "<YEAR>-01-01"
+            msgZ = "eintragen oder aktualisieren, falls vorhanden"
             if MODE:
-                fld = "start_time"
-            if result:
-                if "+" in result[fld]:
-                    next_start_time = result[fld].split("+")[0]
+                msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "LÖSCHEN" + get_fore_color("RED") + ", falls vorhanden"
+            if start_date is None:
+                date_obj = datetime.now()
+                year = date_obj.year
+                target_date = f"{year}-01-01"
+    
+                # korrekt:
+                target_date_obj = datetime.strptime(target_date, "%Y-%m-%d")
+    
+                if (date_obj.year == target_date_obj.year and 
+                    date_obj.month != target_date_obj.month and 
+                    date_obj >= target_date_obj):
+                    warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + get_fore_color("YELLOW") + Style.BRIGHT + f"{target_date}" + get_fore_color("RED"), " liegt in der Vergangenheit!")
+                    warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
                 else:
-                    next_start_time = result[fld]
-
-            info(f"{Absence} Buchung ab :" ,get_fore_color("YELLOW") + next_start_time)
+                    info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("WHITE") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("WHITE") + f"{msgZ}!")
+                
+            else:
+                date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+                warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
+            prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
+            answer = input_with_prefill(prompt, "", "").strip().lower()
+            if not answer in ("", "j", "ja", "y", "yes"):
+                sys.exit(1)
+            else:
+                print()
+    
+            year = date_obj.year
+            start_date = f"{year}-01-01"
+    
+        stop_date  = HCWR_GLOBALS.args.stop_day
+        debug(f"Absence = {Absence}")
+        if match:
+            if stop_date:
+                stop_date = None
+                warning(f"It's not allowed to set option -E with", f"-A {Absence}, it will be ignored!")
+    
+        for p, values in HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.items():
+            if Absence == p:
+                PNAME = p
+                break
+            elif Absence == values[2]:
+                PNAME = p
+                break
+    
+        if Absence in "AU ZKA PRIV" and H and M: # start_date MUST be set for AU, ZKA, PRIV Entry
+            if start_date:
+                next_start_time = start_date
+            else:
+                next_start_time = datetime.today().strftime('%Y-%m-%d') 
+            ask_date = next_start_time
+            if Absence in "AU PRIV":
+                result = get_last_entry(conn)
+                next_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S') 
+                fld = "stop_time"
+                if MODE:
+                    fld = "start_time"
+                if result:
+                    if "+" in result[fld]:
+                        next_start_time = result[fld].split("+")[0]
+                    else:
+                        next_start_time = result[fld]
+    
+                info(f"{Absence} Buchung ab :" ,get_fore_color("YELLOW") + next_start_time)
+                
+            msgZ = "eingetragen bzw. aktualisieren, falls vorhanden"
+            if MODE:
+                msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "GELÖSCHT" + get_fore_color("RED") + " werden, falls vorhanden"
+            start_date = next_start_time
+            warning(f"Missing option:", "-B YYYY-MM-DD")
+            prompt = (get_fore_color("WHITE") + Style.BRIGHT + f"Soll zu heutigem Datum (" + get_fore_color("YELLOW") + Style.BRIGHT + ask_date + get_fore_color("WHITE") + Style.BRIGHT + f") {msgZ}? [J/n]: ")
+            answer = input_with_prefill(prompt, "", "").strip().lower()
+            if not answer in ("", "j", "ja", "y", "yes"):
+                sys.exit(1)
+            else:
+                print()
+    
+        if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
+            warning(f"Wrong date format: ", start_date , "ERROR")
+            sys.exit(1)
             
-        msgZ = "eingetragen bzw. aktualisieren, falls vorhanden"
-        if MODE:
-            msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "GELÖSCHT" + get_fore_color("RED") + " werden, falls vorhanden"
-        start_date = next_start_time
-        warning(f"Missing option:", "-B YYYY-MM-DD")
-        prompt = (get_fore_color("WHITE") + Style.BRIGHT + f"Soll zu heutigem Datum (" + get_fore_color("YELLOW") + Style.BRIGHT + ask_date + get_fore_color("WHITE") + Style.BRIGHT + f") {msgZ}? [J/n]: ")
-        answer = input_with_prefill(prompt, "", "").strip().lower()
-        if not answer in ("", "j", "ja", "y", "yes"):
-            sys.exit(1)
-        else:
-            print()
-
-    if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
-        warning(f"Wrong date format: ", start_date , "ERROR")
-        sys.exit(1)
-        
-    if stop_date:
-        if not is_valid_ymd(stop_date):
-            warning(f"Wrong date format: ", stop_date , "ERROR")
-            sys.exit(1)
-
-    result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
-    if HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(result)
-    sys.exit(0)
-
+        if stop_date:
+            if not is_valid_ymd(stop_date):
+                warning(f"Wrong date format: ", stop_date , "ERROR")
+                sys.exit(1)
+    
+        result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
+        if HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(result)
+        sys.exit(0)
+    
 # -----------------------------------------------------------------------
 
 myname = extract_name()
@@ -684,8 +509,8 @@ if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
 
 cursor.execute(sql, params)
 rows = cursor.fetchall()
-
-holidays_result = insert_holiday_entries(conn, HCWR_GLOBALS.args.year,"2025-12-22")
+debug(f"HCWR_GLOBALS.args.year = {HCWR_GLOBALS.args.year}")
+holidays_result = insert_holiday_entries(conn, HCWR_GLOBALS.args.year)
 # Group categories and calculate totals
 result = []
 current_parent = None
@@ -727,7 +552,7 @@ for description, duration in rows:
         #    #               Organisation: 1
         #    #               Sacharbeit abrechenbar: 1,6
         #    #               Sacharbeit andere*: 0,2
-#TODO: Ausgabe reaprieren!!!
+        #TODO: Ausgabe reaprieren!!!
         if ("  Organisation" == description or "  Organisation" == description or
                 "  Sacharbeit abrechenbar" == description or
                 "  Sacharbeit andere*" == description):
@@ -802,9 +627,9 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
     debug(f"result = \n{result}")
     debug(f"result_old = \n{result_old}")
 
-
 mo, di, mi, do, fr, sa, so, kw_total = get_weekday_hours_per_day(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
-info(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+    info(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
 if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
 
@@ -868,11 +693,8 @@ kw_stundenkonto -= float(zk_minus)
 #HCWR_GLOBALS.SIGN, kw_overhours_add, total_wh = get_kw_overhours_add(wdayhours)
 HCWR_GLOBALS.SIGN, kw_overhours_add = hcwrd_main(conn ,HCWR_GLOBALS.args.week, True)
 
-#CCCC = overhours_main(conn, HCWR_GLOBALS.args.week)
 #info(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
 #info(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
-#info(f"CCCC = {CCCC}")
-#sys.exit(0)
 
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
@@ -882,9 +704,6 @@ if float(WORK_HOURS) + float(krank) + float(urlaub) + float(feiertage) < HCWR_GL
     kw_hours_diff = float(HCWR_GLOBALS.CONTRACT_HOURS - WORK_HOURS)
     if int(HCWR_GLOBALS.DBG_LEVEL)==-100:
         debug(f"kw_hours_diff: {kw_hours_diff}")
-
-    #HOTFIX: Wird nicht in "abwesend verbucht!
-    #abwesend += float(kw_hours_diff)
 
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"final kw_stundenkonto: {kw_stundenkonto}")
@@ -897,9 +716,6 @@ if HCWR_GLOBALS.SIGN == "+":
 else:
     kw_old_overhours = float(kw_stundenkonto) + float(kw_overhours_add)
 
-#info(f"kw_old_overhours: {kw_old_overhours}")
-#sys.exit(0)
-
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"kw_old_overhours: {kw_old_overhours}")
 abwesend += krank
@@ -911,36 +727,6 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
 # Erstelle den Ordner, falls er nicht existiert
 if not os.path.exists(HCWR_GLOBALS.KW_REPORT_DIR) and not HCWR_GLOBALS.args.dry_run:
     os.makedirs(HCWR_GLOBALS.KW_REPORT_DIR)
-
-# REMOVED: Nicht mehr nötig!!
-#if not os.path.exists(HCWR_GLOBALS.KW_REPORT_FILE) and not HCWR_GLOBALS.args.dry_run:
-#    os.system(f"touch {HCWR_GLOBALS.KW_REPORT_FILE}")
-
-# Portet to ../modules/hcwr_tasks_mod.py
-#def get_my_tasks():
-# [...]
-#
-
-# Portet to ../modules/hcwr_utils_mod.py
-#def chgrp(path, group_name):
-# [...]
-#
-
-# Portet to ../modules/hcwr_extexec_mod.py
-# def run_wochenfazit(file_path):
-# [...]
-#
-
-# Portet to ../modules/hcwr_wfout_mod.py
-## Final report output
-#def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, abwesend,
-#                    kw_old_overhours, kw_overhours_add, kw_stundenkonto, result, zk_minus,
-#                    conn, wdays, myname):
-# [...]
-#
-#def handle_output(report_content: str):
-# [...]
-#
 
 REPORT = generate_report(WORK_HOURS, kw_should, HCWR_GLOBALS.CONTRACT_HOURS, feiertage, urlaub,
                          abwesend, kw_old_overhours, kw_overhours_add, kw_stundenkonto,
