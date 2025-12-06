@@ -1,0 +1,953 @@
+#!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------
+# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter
+# File:           hcwr
+# Authors:        Christian Klose <cklose@intevation.de>
+#                 Raimund Renkert <rrenkert@intevation.de>
+# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)
+# Copyright (c) 2024-2026 by Intevation GmbH
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# File version:   1.0.0
+# 
+# This file is part of "hcwr - heco Weekly Report"
+# Do not remove this header.
+# Wochenfazit URL:
+# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit
+# Header added by https://github.com/GhostCoder74/Set-Project-Headers
+# -----------------------------------------------------------------------------------------
+
+"""
+hcwr – Wochenbericht-Erzeugung aus heco time.db
+
+Dieses Skript analysiert Zeitbuchungen, berechnet Wochenstunden,
+Feiertage, Urlaub und erstellt einen Wochenbericht für Intevation.
+"""
+import importlib.machinery
+import importlib.util
+import readline
+import shutil
+import subprocess
+import tempfile
+import locale
+import re
+import os
+import grp
+import getpass
+import argparse
+from argparse import RawTextHelpFormatter
+import configparser
+import sys
+from datetime import datetime, date, timedelta
+from decimal import Decimal, InvalidOperation
+import inspect
+import colorama
+from colorama import Fore, Style
+import time
+import json
+
+
+# Setze Pfad, wenn sqlite3_queries im Unterverzeichnis liegt (z. B. ./lib/)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
+MODULE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../modules"))
+
+class CustomModuleFinder(importlib.machinery.PathFinder):
+    @classmethod
+    def find_spec(cls, fullname, path=None, target=None):
+        fullpath = os.path.join(MODULE_DIR, fullname + ".py")
+        #print(f"fullpath = {fullpath}")
+        if os.path.exists(fullpath):
+            return importlib.util.spec_from_file_location(fullname, fullpath)
+        return None
+
+def install_custom_module_finder():
+    if CustomModuleFinder not in sys.meta_path:
+        sys.meta_path.insert(0, CustomModuleFinder)
+install_custom_module_finder()
+
+# Parse command-line arguments
+ABSENCE_HELP_TXT = """Set vacation, absense or other LOA days
+    VALUES for -A                          |  SHORT VALUES for -A
+      Urlaub                               |    PH
+      Krank                                |    AU
+      Krankengeldbezug                     |    KG
+      Zeitkonto_Übertrag_vom_Vorjahr=<H:M> |    ZKÜ=<H:M>     # H=Hours, M=Minutes
+      Zeitkonto_Abzug_Ausgezahlt=<H:M>     |    ZKA=<H:M>     # H=Hours, M=Minutes
+    
+    EXAMPLE:
+        -A Urlaub -B 2025-12-01[, -E 2025-12-05]
+
+    Short option for Urlaub(Public Holyday):
+        -A PH -B 2025-12-01[, -E 2025-12-05]
+
+"""
+parser = argparse.ArgumentParser(
+    description="""\
+hcwr "Heco Weekly Report" 
+
+Creates WocheWeekly Summary From heco time.db or PostgreSQL database
+
+Optionale Nutzung von Umgebungsvariablen:
+    YEAR     	  – Jahreszahl (z.B. 2025), das selbe geht auch mit -y/--year
+    WEEK oder KW  – Kalenderwoche, erlaubt sind Formate:
+        WEEK=19      oder KW=19
+        WEEK=2025/19 oder KW=2025/19
+        WEEK=2025-19 oder KW=2025-19
+        WEEK=19/2025 oder KW=19/2025
+        WEEK=19-2025 oder KW=19-2025
+    Falls YEAR nicht gesetzt ist, wird das aktuelle Jahr angenommen.
+
+    GROUP         - Default Datei Berechtigungs-Gruppe,
+                    das selbe wie bei -g/--group
+
+Beispiel:
+    YEAR=2025 WEEK=19 hcwr -n
+""",
+    formatter_class=RawTextHelpFormatter
+)
+parser.add_argument('-w', '-kw', '--week', type=int, help='Calendar week (1-53)')
+parser.add_argument('-y', '--year', type=int, help='Jahr (e.g., 2024)')
+parser.add_argument(
+    '-d', '--database',
+    type=str,
+    help='Path to the SQLite database (optional)',
+    default=os.path.expanduser("~/.heco/time.db")
+)
+parser.add_argument(
+    '-g', '--group',
+    type=str,
+    help='Default User Group',
+    default="intevation"
+)
+parser.add_argument(
+    '-c', '--config',
+    type=str,
+    help='User config file',
+    default="~/.heco/hcwr.conf"
+)
+parser.add_argument(
+    '-o', '--output-file',
+    type=str, help='Path to the target file for the weekly summary'
+)
+parser.add_argument(
+    "-ih", "--init-heco", nargs="?", const=True, metavar="KW",
+    help="Initializes a heco time.db and imports the project structure. Optionally with calendar week (e.g., 27)."
+)
+parser.add_argument(
+    "-C", "--configure", action="store_true",
+    help="Edit configuration interactively"
+)
+parser.add_argument(
+    "-ak", "--add-contract-keyword",
+    action="store_true",
+    help="Interactively capture contract ID and related keywords"
+)
+parser.add_argument('-dk', '--delete-keyword', action='store_true', help='Delete a contract keyword from the database')
+parser.add_argument(
+    "-sk", "--show-keywords",
+    action="store_true",
+    help="Displays all stored contract keywords from the database"
+)
+parser.add_argument("-n", "--dry-run", help="Output only, no saving", action='store_true')
+parser.add_argument("-v", "--version", help="Versions info", action='store_true')
+parser.add_argument("-a", "--all-jobs", help="Get all!", action='store_true')
+parser.add_argument("-A", "--absence", help=ABSENCE_HELP_TXT, default='Urlaub',metavar="PH | AU | KG | ZKÜ=<H:M> | ZKA=<H:M>")
+parser.add_argument("-J", "--job-entries", help="To use in conjunction with -s/--search for searching in Job-Entries", action='store_true')
+parser.add_argument("-j", "--json", help="Get JSON output, by using --json and --job-entries", action='store_true')
+parser.add_argument("-B", "--start-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
+parser.add_argument("-E", "--stop-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
+parser.add_argument("-D", "--delete", help="Delete vaction or absence EXAMPLE: -D -A -B 2025-12-01[, -E 2025-12-05]", action='store_true')
+parser.add_argument("-S", "--sum-times", help="Get sum of times!", action='store_true')
+parser.add_argument("-T", "--cat-time-totals-of", help="Get category time totals of 'CategoryA[,CategoryB,...]'")
+parser.add_argument("-F", "--format", help="Format STRING")
+parser.add_argument("-s", "--search", help="Search STRING")
+parser.add_argument("-z", "--zeiterfassung", type=str,  help="Formatting for zeiterfassung.txt EXANPLE: -z ckl,sua")
+
+########## MODULES IMPORT #########################################################
+# ../modules
+if not os.path.exists(MODULE_DIR):
+    warning("No Modules path found in:",MODULE_DIR,"ERROR")
+    sys.exit(1)
+elif MODULE_DIR not in sys.path:
+    sys.path.insert(0, MODULE_DIR)
+    import importlib
+    #print(f"MODULE_DIR = {MODULE_DIR}")
+
+    try:
+        from hcwr_globals_mod import HCWR_GLOBALS
+        HCWR_GLOBALS.args = parser.parse_args()
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Result from HCWR_GLOBALS_mod: HCWR_GLOBALS.args = {HCWR_GLOBALS.args}")
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_dbg_mod")
+        from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_remote_mod")
+        from hcwr_remote_mod import ssh_config_check, checkNfetch_file_from_NIS
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_config_mod")
+        from hcwr_config_mod import update_config_comments, extract_name, get_name_from_config, get_config, get_calendar_week
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_config_mod")
+        from hcwr_config_mod import get_or_create_projects_id_map, get_or_create_wdayhours_map, parse_week_env
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_config_mod")
+        from hcwr_config_mod import isoweek, get_weekday_hours_per_day
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_dbms_mod")
+        from hcwr_dbms_mod import get_db_key_structure, auto_migration, merge_results, get_project_id, get_UK_and_UUK, init_heco, get_last_entry
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_dbms_mod")
+        from hcwr_dbms_mod import initialize_contracts_db, get_contract_id, show_contract_keywords, delete_contract_keyword, set_contract_keywords
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_dbms_mod")
+        from hcwr_dbms_mod import is_current_week_and_complete, berechne_abwesenheiten
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_utils_mod")
+        from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_utils_mod")
+        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_wfout_mod")
+        from hcwr_wfout_mod import generate_report, handle_output
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_extexec_mod")
+        from hcwr_extexec_mod import run_wochenfazit, get_kw_overhours_add, get_kw_overhours
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_tasks_mod")
+        from hcwr_tasks_mod import get_my_tasks, fetch_and_display_entries
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_hcwrd_mod")
+        from hcwr_hcwrd_mod import hcwrd_main, overhours_main
+        if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
+            print(f"[DEBUG] Loading module: hcwr_plugins_mod")
+        from hcwr_plugins_mod import get_holidays_this_and_next_week, insert_LOA_entries
+    except Exception as e:
+        warning("Could not load modules from:",MODULE_DIR,"ERROR")
+        print(f"Details: {e}")
+        sys.exit(1)
+
+HCWR_GLOBALS.args = parser.parse_args()
+
+info(os.path.basename(sys.argv[0]))
+
+
+if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
+    debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
+    debug(f"HCWR_GLOBALS.CFG_FILE = {HCWR_GLOBALS.CFG_FILE}")
+    HCWR_GLOBALS.CFG_FILE = os.path.expanduser(HCWR_GLOBALS.args.config)
+    warning(f"Verwende manuel angegebene Config:", HCWR_GLOBALS.args.config, 'CONFIG INFO')
+    debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
+    debug(f"HCWR_GLOBALS.CFG_FILE = {HCWR_GLOBALS.CFG_FILE}")
+
+if HCWR_GLOBALS.args.version:
+    version()
+    sys.exit(0)
+
+# Portet to ../modules/hcwr_dbg_mod.py
+#def debug(msg):
+# [...]
+#
+#def info(msg_a, msg_b="", type="Info"):
+# [...]
+#
+#def warning(msg_a, msg_b, type="Warning"):
+# [...]
+#
+#
+## For colorized output
+#colorama.init(autoreset=True)
+## Definition of colors
+#def get_fore_color(color):
+# [...]
+#
+
+# Portet to ../modules/hcwr_remote_mod.py
+#def ssh_config_check():
+# [...]
+#
+#def checkNfetch_file_from_NIS(remote_path, local_dest, ssh_host="hq"):
+# [...]
+#
+
+# Portet to ../modules/hcwr_config_mod.py
+#def update_config_comments():
+# [...]
+#
+
+# Portet to ../modules/hcwr_dbms_mod.py
+## Prüft welche "Kürzel" verwentet werden, entsprechend der Vorlage aus:
+## /home/projects/Intern/hecokwreport.hg/template:
+##   heco.projects.sql
+##   heco.projects-v2.sql
+##   heco.projects-ms.sql
+#def get_db_key_structure():
+# [...]
+#
+## Automigrate Funktion im alte Daten und Config zu migrieren:
+#def auto_migration():
+# [...]
+#
+# Portet to ../modules/hcwr_utils_mod.py
+# def check_user_in_group(group_name):
+# [...]
+#
+
+if HCWR_GLOBALS.GROUP:
+    try:
+        group_ok = check_user_in_group(HCWR_GLOBALS.GROUP)
+        if group_ok:
+            HCWR_GLOBALS.args.group = HCWR_GLOBALS.GROUP
+    except Exception as e:
+        warning(f"Fehler beim Parsen von GROUP ", e, "Error")
+        sys.exit(1)
+
+if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
+    HCWR_GLOBALS.args.group = HCWR_GLOBALS.GROUP
+
+# Portet to ../modules/hcwr_config_mod.py
+## Determine current week and year if not provided
+#def parse_week_env(timestamp):
+# [...]
+#
+
+# Portet to ../modules/hcwr_dbms_mod.py
+#def init_heco(kw=None):
+# [...]
+#
+#def initialize_contracts_db():
+# [...]
+#
+#def get_contract_id(entry, db_path=None):
+# [...]
+#
+#def show_contract_keywords():
+# [...]
+#
+#def delete_contract_keyword():
+# [...]
+#
+#def set_contract_keywords(keywords):
+# [...]
+#
+#def is_current_week_and_complete(db_path, year, kw):
+# [...]
+#
+
+# Portet to ../modules/hcwr_utils_mod.py 
+#def input_with_prefill(prompt, prefill, end='\n'):
+# [...]
+#
+#def check_directory_exists(file_path):
+# [...]
+#
+#def format_decimal(value):
+# [...]
+#
+
+# Portet to ../modules/hcwr_config_mod.py
+# def get_calendar_week(date_str):
+# [...]
+#
+
+
+# Portet to ../modules/hcwr_config_mod.py
+#def extract_name():
+# [...]
+#
+#def get_or_create_projects_id_map():
+# [...]
+#
+#def get_or_create_wdayhours_map():
+# [...]
+#
+#def set_default_cons(interactive=False):
+# [...]
+#
+#def get_config(call_from=None):
+# [...]
+#
+#def set_weekhours():
+# [...]
+#
+#def set_heco_db_path():
+# [...]
+#
+#def configure_interactive():
+# [...]
+#
+#def set_first_workday():
+# [...]
+#
+#def update_config(new_config):
+# [...]
+#
+
+# Portet to ../modules/hcwr_config_mod.py
+#def isoweek(date_string, year, week):
+# [...]
+#
+#def get_weekday_hours_per_day(conn, year, week):
+# [...]
+#
+
+# Portet to ../modules/hcwr_extexec_mod.py
+#def get_kw_overhours(kw):
+# [...]
+#
+# def get_kw_overhours_add(kw):
+# [...]
+#
+
+# Portet to ../modules/hcwr_dbms_mod.py
+#def berechne_abwesenheiten(conn, year, week):
+# [...]
+#
+
+# Portet to ../modules/hcwr_utils_mod.py
+## Check if wday is Krank, Urlaub, Feiertag
+#def has_wday_absence(conn, weekday_num, year, week):
+# [...]
+#
+#def get_wday_diff(conn, wdays, year, week):
+# [...]
+#
+
+# Portet to ../modules/hcwr_dbms_mod.py
+## Prepare SQL query
+#def merge_results(result):
+# [...]
+#
+#def get_project_id(cursor, category):
+# [...]
+#
+#def get_UK_and_UUK(conn, base_sql, category, params):
+# [...]
+#
+
+if os.path.exists(HCWR_GLOBALS.CFG_FILE):
+    get_config("read_config")
+    if not auto_migration() and HCWR_GLOBALS.args.init_heco is None:
+        sys.exit(1)
+else:
+    warning(f"Keine Konfigurationsdatei gefunden:", HCWR_GLOBALS.CFG_FILE)
+    # Automigration vorher durchlaufen lassen, falls es Änderungen gab die angepassterden müssen:
+
+    if not auto_migration():
+        sys.exit(1)
+    else:
+        get_config("no_config")
+importlib.invalidate_caches()
+
+if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
+    HCWR_GLOBALS.DBMS = importlib.import_module('psycopg')
+    HCWR_GLOBALS.DB_QUERIES = importlib.import_module('pg_queries')
+
+initialize_contracts_db()
+
+if HCWR_GLOBALS.args.init_heco is not None:
+    if HCWR_GLOBALS.args.init_heco is True:
+        init_heco()  # Ohne KW
+    else:
+        init_heco(HCWR_GLOBALS.args.init_heco)  # Mit KW
+    sys.exit(0)
+
+if HCWR_GLOBALS.args.add_contract_keyword:
+    set_contract_keywords([])
+    sys.exit(0)
+
+if HCWR_GLOBALS.args.show_keywords:
+    show_contract_keywords()
+    sys.exit(0)
+
+if HCWR_GLOBALS.args.delete_keyword:
+    delete_contract_keyword()
+    sys.exit(0)
+
+now = datetime.now()
+if not HCWR_GLOBALS.args.week or not HCWR_GLOBALS.args.year:
+    parse_week_env(now)
+
+try:
+    if HCWR_GLOBALS.args.week and not len(str(HCWR_GLOBALS.args.week))<3:
+        raise ValueError(f"Ungültiges Format für -w/-kw/--week: {HCWR_GLOBALS.args.week}")
+        sys.exit(1)
+    if HCWR_GLOBALS.args.year and not len(str(HCWR_GLOBALS.args.year))==4:
+        raise ValueError(f"Ungültiges Format für -y/--year: {HCWR_GLOBALS.args.year}")
+        sys.exit(1)
+
+except Exception as e:
+    warning(f"Fehler beim Parsen : ", e, "Error")
+    sys.exit(1)
+
+HCWR_GLOBALS.MONDAY = date.fromisocalendar(HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week, 1)
+HCWR_GLOBALS.SUNDAY = HCWR_GLOBALS.MONDAY + timedelta(days=6)
+
+if HCWR_GLOBALS.args.search and HCWR_GLOBALS.args.job_entries:
+    fetch_and_display_entries()
+    sys.exit(0)
+
+if not HCWR_GLOBALS.args.absence:
+    is_now, is_complete, missing = is_current_week_and_complete(HCWR_GLOBALS.args.database, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
+
+    if not is_complete and is_now and not HCWR_GLOBALS.args.configure:
+        info("Es sind noch keine Zeiten erfasst, für :", ", ".join(missing))
+        exit(1)
+    
+    
+    HCWR_GLOBALS.PROJECTS_ID_MAP = get_or_create_projects_id_map()
+    # Example:
+    # WDAYHOURS_MAP = {
+    #     "Mo": 8.5,
+    #     "Di": 8.5,
+    #     "Mi": 8.5,
+    #     "Do": 8.5,
+    #     "Fr": 6.0,
+    #     "Sa": 0.0,
+    #     "So": 0.0
+    # }
+    HCWR_GLOBALS.WDAYHOURS_MAP  = get_or_create_wdayhours_map()
+    
+    if HCWR_GLOBALS.args.configure:
+        configure_interactive()
+        # Config Default Example Kommentare in HCWR_GLOBALS.CFG_FILE einsetzen:
+        update_config_comments()
+        sys.exit(0)
+
+weekhours, week = get_config()
+# Connect to the SQLite database
+db_path = HCWR_GLOBALS.args.database
+if int(HCWR_GLOBALS.DBG_LEVEL)==1:
+    debug (f"weekhours = {weekhours}")
+    debug (f"week = {week}")
+    debug (f"db_path = {db_path}")
+conn = HCWR_GLOBALS.DBMS.connect(db_path)
+
+# -----------------------------------------------------------------------
+# Handling for: 
+# ZKÜ, ZKA, Urlaub, AU, KG, Privat 
+Absence = HCWR_GLOBALS.args.absence
+match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}):([0-9]{2})", HCWR_GLOBALS.args.absence)
+failedmatch = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=?", HCWR_GLOBALS.args.absence)
+H = None  # Hours for ZKÜ or ZKA
+M = None  # Minutes for ZKÜ or ZKA
+info(f"match = {match}")
+info(f"failedmatch = {failedmatch}")
+
+if not Absence in "PH VAC AU KG":
+    if match:
+        Absence, H, M = match.group(1), match.group(2), match.group(3)
+    elif failedmatch:
+        Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
+        warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
+        sys.exit(1)
+
+
+if (Absence and HCWR_GLOBALS.args.start_day) or (Absence in "AU ZKÜ ZKA PRIV" and H and M):
+    start_date = HCWR_GLOBALS.args.start_day
+    MODE = HCWR_GLOBALS.args.delete
+    if Absence in "ZKÜ": # Set start_date ONLY for ZKÜ Entry to "<YEAR>-01-01"
+        msgZ = "eintragen oder aktualisieren, falls vorhanden"
+        if MODE:
+            msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "LÖSCHEN" + get_fore_color("RED") + ", falls vorhanden"
+        if start_date is None:
+            date_obj = datetime.now()
+            year = date_obj.year
+            target_date = f"{year}-01-01"
+
+            # korrekt:
+            target_date_obj = datetime.strptime(target_date, "%Y-%m-%d")
+
+            if (date_obj.year == target_date_obj.year and 
+                date_obj.month != target_date_obj.month and 
+                date_obj >= target_date_obj):
+                warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + get_fore_color("YELLOW") + Style.BRIGHT + f"{target_date}" + get_fore_color("RED"), " liegt in der Vergangenheit!")
+                warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
+            else:
+                info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("WHITE") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("WHITE") + f"{msgZ}!")
+            
+        else:
+            date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+            warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
+        prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if not answer in ("", "j", "ja", "y", "yes"):
+            sys.exit(1)
+        else:
+            print()
+
+        year = date_obj.year
+        start_date = f"{year}-01-01"
+
+    stop_date  = HCWR_GLOBALS.args.stop_day
+    info(f"Absence = {Absence}")
+    if match:
+        if stop_date:
+            stop_date = None
+            warning(f"It's not allowed to set option -E with", f"-A {Absence}, it will be ignored!")
+
+    for p, values in HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.items():
+        if Absence == p:
+            PNAME = p
+            break
+        elif Absence == values[2]:
+            PNAME = p
+            break
+
+    if Absence in "AU ZKA PRIV" and H and M: # start_date MUST be set for AU, ZKA, PRIV Entry
+        if start_date:
+            next_start_time = start_date
+        else:
+            next_start_time = datetime.today().strftime('%Y-%m-%d') 
+        ask_date = next_start_time
+        if Absence in "AU PRIV":
+            result = get_last_entry(conn)
+            next_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S') 
+            fld = "stop_time"
+            if MODE:
+                fld = "start_time"
+            if result:
+                if "+" in result[fld]:
+                    next_start_time = result[fld].split("+")[0]
+                else:
+                    next_start_time = result[fld]
+
+            info(f"{Absence} Buchung ab :" ,get_fore_color("YELLOW") + next_start_time)
+            
+        msgZ = "eingetragen bzw. aktualisieren, falls vorhanden"
+        if MODE:
+            msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "GELÖSCHT" + get_fore_color("RED") + " werden, falls vorhanden"
+        start_date = next_start_time
+        warning(f"Missing option:", "-B YYYY-MM-DD")
+        prompt = (get_fore_color("WHITE") + Style.BRIGHT + f"Soll zu heutigem Datum (" + get_fore_color("YELLOW") + Style.BRIGHT + ask_date + get_fore_color("WHITE") + Style.BRIGHT + f") {msgZ}? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if not answer in ("", "j", "ja", "y", "yes"):
+            sys.exit(1)
+        else:
+            print()
+
+    if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
+        warning(f"Wrong date format: ", start_date , "ERROR")
+        sys.exit(1)
+        
+    if stop_date:
+        if not is_valid_ymd(stop_date):
+            warning(f"Wrong date format: ", stop_date , "ERROR")
+            sys.exit(1)
+
+    result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
+    if HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(result)
+    sys.exit(0)
+
+# -----------------------------------------------------------------------
+
+myname = extract_name()
+
+HCWR_GLOBALS.KW_REPORT_DIR = os.path.expanduser(f'{HCWR_GLOBALS.KW_REPORT_BASE_DIR}/{HCWR_GLOBALS.args.year}/{HCWR_GLOBALS.args.week}')
+HCWR_GLOBALS.KW_REPORT_FILE = os.path.join(HCWR_GLOBALS.KW_REPORT_DIR, f"{os.getlogin()}.txt")
+
+if HCWR_GLOBALS.args.output_file:
+    if not check_directory_exists(os.path.abspath(HCWR_GLOBALS.args.output_file)):
+        print(get_fore_color("RED") + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(HCWR_GLOBALS.args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
+    else:
+        HCWR_GLOBALS.KW_REPORT_FILE = os.path.abspath(HCWR_GLOBALS.args.output_file)
+
+# Register custom SQL function to check for ISO week
+if not HCWR_GLOBALS.CFG.has_option("Database", "dbms") or HCWR_GLOBALS.CFG.get("Database", "dbms") == "sqlite3":
+    conn.create_function("isoweek", 3, isoweek)
+cursor = conn.cursor()
+
+sql = HCWR_GLOBALS.DB_QUERIES.total_per_project
+
+if HCWR_GLOBALS.args.dry_run:
+    info("Dry-Run Mode is: ", "Active!!!")
+
+if not sys.stdout.isatty():
+    info("stdout redirect is "," Active!")
+    info("Prompt inputs will not be auto filled!", "")
+
+params = []
+if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
+    sql = HCWR_GLOBALS.DB_QUERIES.total_per_project_by_week
+    params.extend([HCWR_GLOBALS.MONDAY.strftime("%Y-%m-%d"), HCWR_GLOBALS.SUNDAY.strftime("%Y-%m-%d")])
+
+#sql += "GROUP BY p.id, p.key, p.description\nORDER BY p.id DESC;"
+if int(HCWR_GLOBALS.DBG_LEVEL) == 6:
+    debug(f"sql = {sql}")
+if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
+    debug(f"start = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
+    debug(f"stop = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
+
+cursor.execute(sql, params)
+rows = cursor.fetchall()
+
+holidays_result = insert_holiday_entries(conn, HCWR_GLOBALS.args.year,"2025-12-22")
+# Group categories and calculate totals
+result = []
+current_parent = None
+sub_duration = 0
+
+TOTAL_SUM = 0
+
+if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
+    debug(f"mapping: {HCWR_GLOBALS.MAPPING}")
+    debug(f"rows: {rows}")
+
+for description, duration in rows:
+    if int(HCWR_GLOBALS.DBG_LEVEL) == 3:
+        debug(f"description: {description}")
+        debug(f"   duration: {duration}")
+        debug(f"--------------------------")
+    description = description.rstrip()
+    if any(description.startswith(key) for keys in HCWR_GLOBALS.MAPPING.values() for key in keys):
+        continue
+
+    if duration != None:
+        TOTAL_SUM += duration
+    is_sub = description.startswith("  ")
+    if int(HCWR_GLOBALS.DBG_LEVEL) == -10 and is_sub:
+        debug(f"-------------------------\nis_sub = {is_sub}\ndescription: {description}")
+        debug(f"duration: {duration}\n-------------------------")
+    if is_sub:
+        if int(HCWR_GLOBALS.DBG_LEVEL) == 5 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
+            debug(f"IS SUB -> description: {description}")
+            debug(f"IS SUB -> duration: {duration}")
+        if duration != None:
+            sub_duration += duration
+        # Entry als UK aus Tabelle entries holen, passend zur Thematik:
+        #    # "Organisation" als UUK
+        #    # "Sacharbeit abrechenbar" als UUK
+        #    # "Sacharbeit andere*" als UUK
+        #    # description = "AUFTRAG #1234"
+        #    #   Beispiel: OpenSlides #3970: 2,8
+        #    #               Organisation: 1
+        #    #               Sacharbeit abrechenbar: 1,6
+        #    #               Sacharbeit andere*: 0,2
+#TODO: Ausgabe reaprieren!!!
+        if ("  Organisation" == description or "  Organisation" == description or
+                "  Sacharbeit abrechenbar" == description or
+                "  Sacharbeit andere*" == description):
+            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
+                debug(f"IS Auftrag UUK -> description: {description}")
+            uk_entries = get_UK_and_UUK(conn, sql, description, params)
+            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
+                debug(f"uk_entries = {uk_entries}")
+            for row in uk_entries:
+                debug(f"row = {row}")
+                entry_description = f"  {row['entry']}"
+                uuk = row['uuk']
+                entry_duration = row['duration']
+                if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
+                    debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+
+                added = False
+                if result != None and (int(HCWR_GLOBALS.DBG_LEVEL) == 1 or int(HCWR_GLOBALS.DBG_LEVEL) == -2):
+                    debug(f"IS Auftrag UUK -> description: {description}\n-------------------\nresult = {result}\n-------------------")
+                if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
+                    for r in result:
+                        if 'contract_id' in r and r['contract_id'] == row['contract_id']:
+                            r['duration'] += entry_duration
+                            r['uuk'].append({"description": f"  {description}", "duration": entry_duration})
+                            added = True
+                            break
+                else:
+                    row['contract_id'] = ""
+                    row['task'] = ""
+
+                if not added:
+                    if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
+                        result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": [{"description": f"  {description}", "duration": entry_duration}]})
+                    else:
+                        result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": {"description": f"  {description}", "duration": entry_duration}})
+        else:
+            result.append({"description": description, "duration": duration, "uuk": None, "uuk_duration": None})
+    else:
+        if description == "Auftrag#":
+            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
+                debug(f"IS Auftrag UUK -> description: {description}")
+            uk_entries = get_UK_and_UUK(conn, sql, description, params)
+            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
+                debug(f"uk_entries = {uk_entries}")
+            for row in uk_entries:
+                entry_description = f"  {row['entry']}"
+                uuk = row['uuk']
+                entry_duration = row['duration']
+                if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
+                    debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+                # uuk & uuk_duration müssen hier None sein, da es eine Oberkategorien ist!
+                result.append({"description": entry_description, "duration": entry_duration, "uuk": None, "uuk_duration": None})
+
+        if description == "Auftrag#":
+            description = "Leistungserbringung"
+
+        if duration == None:
+            duration = 0
+        current_parent = {
+            "description": description,
+            "duration": duration + sub_duration,
+            "uuk": None,
+            "uuk_duration": None
+        }
+        sub_duration = 0
+        result.append(current_parent)
+
+result.reverse()
+result_old = result
+result = merge_results(result)
+if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
+    debug(f"result = \n{result}")
+    debug(f"result_old = \n{result_old}")
+
+
+mo, di, mi, do, fr, sa, so, kw_total = get_weekday_hours_per_day(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
+info(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
+    debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+
+wdays = {
+    "Mo": Decimal(mo),
+    "Di": Decimal(di),
+    "Mi": Decimal(mi),
+    "Do": Decimal(do),
+    "Fr": Decimal(fr),
+    "Sa": Decimal(sa),
+    "So": Decimal(so)
+}
+wdayhours = {
+    "Mo": mo,
+    "Di": di,
+    "Mi": mi,
+    "Do": do,
+    "Fr": fr,
+    "Sa": sa,
+    "So": so
+}
+
+# Calculate absences
+abwesenheiten = berechne_abwesenheiten(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
+if abwesenheiten["temp"] > 0:
+    msg = f"Unter Temp sind noch Zeiten für KW {HCWR_GLOBALS.args.week}/{HCWR_GLOBALS.args.year} nicht einsortiert!"
+    print(get_fore_color("RED") + Style.BRIGHT + "ABBRUCH: "  + Style.RESET_ALL + msg, file=sys.stderr)
+    sys.exit(1)
+
+feiertage = float(0)
+if abwesenheiten.get("feiertag"):
+    feiertage = abwesenheiten["feiertag"]
+urlaub = float(0)
+if abwesenheiten.get("urlaub"):
+    urlaub = abwesenheiten["urlaub"]
+krank = float(0)
+if abwesenheiten.get("krank"):
+    krank = abwesenheiten["krank"]
+zk_minus = float(0)
+if abwesenheiten.get("zk_minus"):
+    zk_minus = abwesenheiten["zk_minus"]
+
+abwesend = 0.0
+
+# Work hours and overtime calculation
+WORK_HOURS = TOTAL_SUM
+HCWR_GLOBALS.CONTRACT_HOURS = weekhours
+
+#kw_stundenkonto = get_kw_overhours(HCWR_GLOBALS.args.week, conn)
+s, kw_stundenkonto = overhours_main(conn, HCWR_GLOBALS.args.week)
+if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+    debug(f"WORK_HOURS: {WORK_HOURS}")
+    debug(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
+    debug(f"kw_stundenkonto: {kw_stundenkonto}")
+
+#info("kw_stundenkonto =", kw_stundenkonto, type(kw_stundenkonto))
+#info("zk_minus =", zk_minus, type(zk_minus))
+
+kw_stundenkonto -= float(zk_minus)
+#HCWR_GLOBALS.SIGN, kw_overhours_add = get_kw_overhours_add(wdayhours, "Fr")
+#HCWR_GLOBALS.SIGN, kw_overhours_add, total_wh = get_kw_overhours_add(wdayhours)
+HCWR_GLOBALS.SIGN, kw_overhours_add = hcwrd_main(conn ,HCWR_GLOBALS.args.week, True)
+
+#CCCC = overhours_main(conn, HCWR_GLOBALS.args.week)
+#info(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
+#info(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
+#info(f"CCCC = {CCCC}")
+#sys.exit(0)
+
+if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+    debug(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
+    debug(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
+
+if float(WORK_HOURS) + float(krank) + float(urlaub) + float(feiertage) < HCWR_GLOBALS.CONTRACT_HOURS:
+    kw_hours_diff = float(HCWR_GLOBALS.CONTRACT_HOURS - WORK_HOURS)
+    if int(HCWR_GLOBALS.DBG_LEVEL)==-100:
+        debug(f"kw_hours_diff: {kw_hours_diff}")
+
+    #HOTFIX: Wird nicht in "abwesend verbucht!
+    #abwesend += float(kw_hours_diff)
+
+if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+    debug(f"final kw_stundenkonto: {kw_stundenkonto}")
+    debug(f"final kw_overhours_add: {kw_overhours_add}")
+    debug(f"final kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
+
+# Sundenkonto : + oder - Stunden?
+if HCWR_GLOBALS.SIGN == "+":
+    kw_old_overhours = float(kw_stundenkonto) - float(kw_overhours_add)
+else:
+    kw_old_overhours = float(kw_stundenkonto) + float(kw_overhours_add)
+
+#info(f"kw_old_overhours: {kw_old_overhours}")
+#sys.exit(0)
+
+if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+    debug(f"kw_old_overhours: {kw_old_overhours}")
+abwesend += krank
+
+kw_should = HCWR_GLOBALS.CONTRACT_HOURS - (abwesend + urlaub + feiertage)
+if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+    debug(f"kw_should: {kw_should}")
+
+# Erstelle den Ordner, falls er nicht existiert
+if not os.path.exists(HCWR_GLOBALS.KW_REPORT_DIR) and not HCWR_GLOBALS.args.dry_run:
+    os.makedirs(HCWR_GLOBALS.KW_REPORT_DIR)
+
+# REMOVED: Nicht mehr nötig!!
+#if not os.path.exists(HCWR_GLOBALS.KW_REPORT_FILE) and not HCWR_GLOBALS.args.dry_run:
+#    os.system(f"touch {HCWR_GLOBALS.KW_REPORT_FILE}")
+
+# Portet to ../modules/hcwr_tasks_mod.py
+#def get_my_tasks():
+# [...]
+#
+
+# Portet to ../modules/hcwr_utils_mod.py
+#def chgrp(path, group_name):
+# [...]
+#
+
+# Portet to ../modules/hcwr_extexec_mod.py
+# def run_wochenfazit(file_path):
+# [...]
+#
+
+# Portet to ../modules/hcwr_wfout_mod.py
+## Final report output
+#def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, abwesend,
+#                    kw_old_overhours, kw_overhours_add, kw_stundenkonto, result, zk_minus,
+#                    conn, wdays, myname):
+# [...]
+#
+#def handle_output(report_content: str):
+# [...]
+#
+
+REPORT = generate_report(WORK_HOURS, kw_should, HCWR_GLOBALS.CONTRACT_HOURS, feiertage, urlaub,
+                         abwesend, kw_old_overhours, kw_overhours_add, kw_stundenkonto,
+                         result, zk_minus, conn, wdays, myname)
+
+# Config Default Example Kommentare in HCWR_GLOBALS.CFG_FILE einsetzen:
+update_config_comments()
+
+# REPORT AUSGEBEN
+handle_output(REPORT)

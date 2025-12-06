@@ -1,0 +1,187 @@
+# -----------------------------------------------------------------------------------------   
+# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter            
+# File:           hcwr_wfout_mod.py
+# Authors:        Christian Klose <cklose@intevation.de>                                      
+#                 Raimund Renkert <rrenkert@intevation.de>                                    
+# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
+# Copyright (c) 2024-2026 by Intevation GmbH                                                  
+# SPDX-License-Identifier: GPL-2.0-or-later                                                   
+#                                                                                             
+# This file is part of "hcwr - heco Weekly Report"                                            
+# Do not remove this header.                                                                  
+# Wochenfazit URL:                                                                            
+# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit    
+# Header added by https://github.com/GhostCoder74/Set-Project-Headers                         
+# -----------------------------------------------------------------------------------------
+import os
+import sys
+import shutil
+import tempfile
+import subprocess
+from decimal import Decimal, InvalidOperation
+
+# Import von eigenem Module
+from hcwr_globals_mod import HCWR_GLOBALS
+from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_utils_mod import format_decimal, get_wday_diff, input_with_prefill, chgrp
+from hcwr_extexec_mod import run_wochenfazit
+from hcwr_tasks_mod import get_my_tasks 
+
+# Final report output
+def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, abwesend,
+                    kw_old_overhours, kw_overhours_add, kw_stundenkonto, result, zk_minus,
+                    conn, wdays, myname):
+    """
+    Erzeugt die den Bericht für das Wochenfazit
+    """
+    fname = get_function_name()
+
+    report_lines = []
+    week_str = f"{HCWR_GLOBALS.args.year}-W{HCWR_GLOBALS.args.week:02d}"
+    report_lines.append(f"Wochenfazit: {week_str} Name: {myname}\n")
+    report_lines.append(
+        f"Arbeitsstunden: {format_decimal(work_hours)} von {format_decimal(kw_should)} "
+        f"(Vertrag: {format_decimal(contract_hours)}  Feiertage: {format_decimal(feiertage)}  "
+        f"Urlaub: {format_decimal(urlaub)}  abwesend: {format_decimal(abwesend)})"
+    )
+    #TODO: Vorzeichen BUG beheben
+    kw_overhours_add_abs = abs(round(kw_overhours_add, 2))
+
+    if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
+        debug(f"sign = {HCWR_GLOBALS.SIGN}")
+        debug(f"kw_overhours_add = {format_decimal(kw_overhours_add)}")
+    report_lines.append(
+        f"Stundenkonto: {format_decimal(kw_old_overhours)} {HCWR_GLOBALS.SIGN} {format_decimal(abs(kw_overhours_add_abs))} "
+        f"= {format_decimal(kw_stundenkonto)}"
+    )
+
+    # Tagabweichungen hinzufügen (erst jetzt!)
+    report_lines.append(get_wday_diff(conn, wdays, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week))
+
+    conn.close()
+
+    if work_hours > 0 and kw_should > 0:
+
+        # TODO: Per config option oder arg eine Uniq-Liste der Tätigkeiten der KW einfügen wenn dies gesetzt wurde.
+        my_tasks = None
+        if HCWR_GLOBALS.CFG.has_option('General', 'insert_tasks'):
+            if HCWR_GLOBALS.CFG.get("General", "insert_tasks").lower() == "true":
+                my_tasks = get_my_tasks()
+
+        # my_tasks ist noch in Arbeit
+        if my_tasks is None:
+            my_tasks = HCWR_GLOBALS.REMINDER_TXT
+        report_lines.append(f"\nFür uns miterreicht habe ich:\n  {my_tasks}")
+        report_lines.append(f"\nGelernt habe ich:\n  {HCWR_GLOBALS.REMINDER_TXT}")
+        report_lines.append(f"\nUns besser machen würde vielleicht:\n  {HCWR_GLOBALS.REMINDER_TXT}\n")
+
+        # Workload breakdown
+        report_lines.append("Stundenaufteilung:")
+        percent_part = Decimal(0.0) if work_hours == 0 else Decimal(100) / Decimal(work_hours)
+
+        groups = []
+        current_group = None
+        if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
+            debug(f"generate_report: result = {result}")
+            debug(f"#############################################################################")
+        for item in result:
+            if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
+                debug(f"generate_report: item = {item}")
+            is_sub = item['description'].startswith("  ")
+
+            if round(item['duration'], 2) > 0:
+                if not is_sub:
+                    if current_group:
+                        groups.append(current_group)
+                    p = round(percent_part * Decimal(round(item['duration'], 2)), 0)
+                    current_group = {
+                        "percent": p,
+                        "parent": item,
+                        "subs": []
+                    }
+                else:
+                    if current_group:
+                        current_group["subs"].append(item)
+
+        if current_group:
+            groups.append(current_group)
+
+        groups.sort(key=lambda g: g["percent"], reverse=True)
+        for group in groups:
+            p = group["percent"]
+            parent = group["parent"]
+            report_lines.append(f"{p}%: {parent['description']}: {format_decimal(round(parent['duration'], 2))}")
+            for sub in group["subs"]:
+                line = ""
+                if 'task' in sub and sub['task']:
+                    line += f"  {sub['task']} {sub.get('contract_id', '')}: {format_decimal(round(sub['duration'], 2))}"
+                else:
+                    line += f"{sub.get('description', '')}: {format_decimal(round(sub['duration'], 2))}"
+                report_lines.append(line)
+
+                if int(HCWR_GLOBALS.DBG_LEVEL) == -99:
+                    debug(f"sub = {sub}")
+                uuk_entries = sub.get('uuk')
+                if int(HCWR_GLOBALS.DBG_LEVEL) == -99:
+                    info("uuk_entries = ",uuk_entries)
+                    debug(f"config = {HCWR_GLOBALS.has_option('General', 'show_uuk')}")
+                if uuk_entries != None:
+                    if HCWR_GLOBALS.CFG.has_option("General", "show_uuk"):
+                        if HCWR_GLOBALS.CFG.get("General", "show_uuk").lower() == "true":
+                            if int(HCWR_GLOBALS.DBG_LEVEL) == -99:
+                                info("uuk = ",uuk_entries)
+                            if isinstance(uuk_entries, dict):
+                                if int(HCWR_GLOBALS.DBG_LEVEL) == -99:
+                                    info("uuk is dict")
+                                desc = uuk_entries['description']
+                                dur = uuk_entries['duration']
+                                if desc and dur is not None:
+                                    report_lines.append(f"{desc}: {format_decimal(round(dur, 2))}")
+
+    if zk_minus > 0:
+        report_lines.append(f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {format_decimal(round(zk_minus, 2))}")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        print("\n".join(report_lines))
+        sys.exit(1)
+
+    return "\n".join(report_lines)
+
+def handle_output(report_content: str):
+    #TODO: MY_EDITOR Variable etablieren
+    """
+    Gibt den Bericht als STDOUT oder Datei zum editieren geöffnet in vim
+    """
+    if HCWR_GLOBALS.args.dry_run:
+        print(report_content)
+    else:
+        # Zielpfade vorbereiten
+        kwd = HCWR_GLOBALS.KW_REPORT_DIR
+        os.makedirs(kwd, exist_ok=True)
+
+        # Temporäre Datei erstellen
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".txt") as f:
+            f.write(report_content)
+            f.flush()
+            tempname = f.name
+
+        # Öffne vim zur Bearbeitung
+        subprocess.call(["vim", tempname])
+
+	# Nach Bearbeitung fragen, ob wochenfazit.py zur Prüfung ausgeführt werden soll (Enter = Ja)
+        prompt = (f"Soll der Bericht nun " + get_fore_color("BLUE") + Style.BRIGHT + f"'{tempname}'" + Style.RESET_ALL + f"  geprüft werden, von \n\n {HCWR_GLOBALS.WF_CHECK_PATH}\n\n [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if answer in ("", "j", "ja", "y", "yes"):
+            run_wochenfazit(tempname)
+	# Nach Bearbeitung fragen, ob speichern (Enter = Ja)
+        prompt = (f"Soll der Bericht nach " + get_fore_color("BLUE") + Style.BRIGHT + f"'{HCWR_GLOBALS.KW_REPORT_FILE}'" + Style.RESET_ALL + f" gespeichert werden? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if answer in ("", "j", "ja", "y", "yes"):
+            shutil.copy(tempname, HCWR_GLOBALS.KW_REPORT_FILE)
+            os.remove(tempname)
+            print(get_fore_color("GREEN") + Style.BRIGHT + f"\n✅ Bericht gespeichert unter: {HCWR_GLOBALS.KW_REPORT_FILE}" + Style.RESET_ALL, file=sys.stderr)
+            chgrp(HCWR_GLOBALS.KW_REPORT_FILE, HCWR_GLOBALS.args.group)
+        else:
+            os.remove(tempname)
+            print(get_fore_color("RED") + Style.BRIGHT + f"X Bericht wurde verworfen." + Style.RESET_ALL, file=sys.stderr)
+
+
