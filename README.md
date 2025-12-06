@@ -100,7 +100,7 @@ sudo make install
 
 (Requires hcwr ≥ v1.0)
 ```bash
-make install PREFIX=/usr BASE_DIR=lib/hcwr SHARE_DIR=/var/lib/share/hcwr
+make install PREFIX=/usr/ BASE_DIR=local SHARE_DIR=/usr/share/hcwr
 ```
 ## Manual install
 
