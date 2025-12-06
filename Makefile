@@ -42,6 +42,13 @@ INSTALL_MOD   := install -m 644
 all:
 	@echo "Use 'make install', 'make uninstall', or 'make tree'."
 
+showvars:
+	@echo "PREFIX     = $(PREFIX)"
+	@echo "BASE_DIR   = $(BASE_DIR)"
+	@echo "BIN_DIR    = $(BIN_DIR)"
+	@echo "MOD_DIR    = $(MOD_DIR)"
+	@echo "SHARE_DIR  = $(SHARE_DIR)"
+
 # ------------------------------------------------------------
 # Installation
 # ------------------------------------------------------------
@@ -60,6 +67,40 @@ install:
 	@echo "→ Modules:  $(PREFIX)/$(MOD_DIR)/$(NAME)_*_mod.py"
 	@echo "→ Logo:     $(PREFIX)/$(SHAR_DIR)/$(NAME)-Logo.jpeg"
 
+# ------------------------------------------------------------
+# Install geaCal plugin into hcwr
+# ------------------------------------------------------------
+install2hcwr:
+	@echo "📦 Installing geaCal plugin into hcwr..."
+
+	@if [ ! -d ./GaussEasterAlgorithm ]; then
+		echo "❌ ERROR: No ./GaussEasterAlgorithm repo found!"
+		@command -v git >/dev/null 2>&1 || { \
+			echo "❌ ERROR: git is not installed!"; \
+			exit 1; \
+		}
+
+		@echo "✔ git found"
+		@echo "Trying to clone it from github.com"
+
+		git clone https://github.com/GhostCoder74/GaussEasterAlgorithm.git
+		@echo "✔ Successfully cloned from GitHub!"
+	fi
+	# Ensure plugin directory exists
+	@mkdir -p "$(PREFIX)/$(MOD_DIR)/"
+
+	@$(INSTALL_BIN) "usr/local/bin/geaCal*" "$(PREFIX)$(BIN_DIR)/"
+	# Copy Python plugin modules (*.py)
+	@cp -v ./GaussEasterAlgorithm/modules/geaCal_*_mod.py "$(PREFIX)/$(MOD_DIR)/"
+
+	# Optional: copy README or data files
+	@if [ -f GaussEasterAlgorithm/README.md ]; then \
+		cp -v ./GaussEasterAlgorithm/README.md "$(PREFIX)/$(MOD_DIR)/"; \
+	fi
+
+	@echo "✔ geaCal plugin installed successfully into:"
+	@echo "  $(PREFIX)/$(BIN_DIR)"
+	@echo "  $(PREFIX)/$(MOD_DIR)"
 # ------------------------------------------------------------
 # Uninstall
 # ------------------------------------------------------------

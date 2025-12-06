@@ -105,7 +105,34 @@ sudo install -m 644 $PREFIX/modules/hcwr_*_mod.py /$PREFIX/modules/
 sudo install -m 644 $PREFIX/share/hcwr-Logo.jpeg /$PREFIX/share/
 export PATH="$PATH:/$PREFIX/bin"
 ```
+## 🔌 Plugin installation of **geaCal** for hcwr
 
+To install the Gaussian Easter Algorithm Calendar Tool (**geaCal**) as an hcwr plugin, clone the plugin repository and copy it into the hcwr plugin directory.
+
+### (Optional) Clone the geaCal plugin
+```bash
+cd heco-weekly-report
+git clone https://github.com/GhostCoder74/GaussEasterAlgorithm.git
+```
+#### Install the plugin into hcwr Default directory:
+
+(Requires hcwr ≥ v1.0)
+
+```bash
+make install2hcwr
+```
+This installs the plugin files into:
+```bash
+/opt/hcwr/bin/
+/opt/hcwr/modules/
+```
+
+#### Install the plugin into hcwr Default directory:
+
+(Requires hcwr ≥ v1.0)
+```bash
+make install2hcwr PREFIX=/usr BASE_DIR=lib/hcwr SHARE_DIR=/var/lib/hcwr-share
+```
 # 🚀 Usage
 
 ## 🗂 Output Modes
