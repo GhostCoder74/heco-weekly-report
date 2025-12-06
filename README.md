@@ -92,8 +92,15 @@ cd heco-weekly-report
 ```
 
 ## Quick install
+#### Install the plugin into hcwr Default directory:
 ```bash
 sudo make install
+```
+#### Install the plugin into hcwr special directory:
+
+(Requires hcwr ≥ v1.0)
+```bash
+make install PREFIX=/usr BASE_DIR=lib/hcwr SHARE_DIR=/var/lib/share/hcwr
 ```
 ## Manual install
 
@@ -131,7 +138,7 @@ This installs the plugin files into:
 
 (Requires hcwr ≥ v1.0)
 ```bash
-make install2hcwr PREFIX=/usr BASE_DIR=lib/hcwr SHARE_DIR=/var/lib/hcwr-share
+make install2hcwr PREFIX=/usr BASE_DIR=lib/hcwr SHARE_DIR=/var/lib/share/hcwr
 ```
 # 🚀 Usage
 
