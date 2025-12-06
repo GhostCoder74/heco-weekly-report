@@ -127,7 +127,7 @@ This installs the plugin files into:
 /opt/hcwr/modules/
 ```
 
-#### Install the plugin into hcwr Default directory:
+#### Install the plugin into hcwr special directory:
 
 (Requires hcwr ≥ v1.0)
 ```bash
