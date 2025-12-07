@@ -793,7 +793,7 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
 
 if HCWR_GLOBALS.PROC_NAME in "hcoh":
     info(f"{format_decimal(WORK_HOURS)} von {format_decimal(kw_should)} (Vertrag: {format_decimal(HCWR_GLOBALS.CONTRACT_HOURS)} Feiertage: {format_decimal(feiertage)} Urlaub: {format_decimal(urlaub)} Abwesend: {format_decimal(abwesend)})", "", "Arbeitsstunden")
-    if kw_old_overhours < kw_stundenkonto:
+    if kw_old_overhours < kw_stundenkonto or kw_stundenkonto > 0:
         IC = Fore.GREEN
         GL = "Überstunden"
         IL = Fore.GREEN
