@@ -96,13 +96,14 @@ def get_function_name():
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         warning(f"Break Point is active for function:", fname, "Info")
-    if len(HCWR_GLOBALS.DBG_PROCESS_ROUTE)>0:
-        HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(f"{fname} [{ffile}:{fline}]")
-         # --- Aufrufzähler ---
-        HCWR_GLOBALS.DBG_CALL_COUNT[f"{fname} [{ffile}:{fline}]"] = HCWR_GLOBALS.DBG_CALL_COUNT.get(f"{fname} [{ffile}:{fline}]", 0) + 1
-        # speichern für Call-Tree
-        HCWR_GLOBALS.DBG_CALL_TREE.append((depth, f"{fname} [{ffile}:{fline}]"))
-        #print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
+    if HCWR_GLOBALS.DBG_PROCESS_ROUTE:
+        if len(HCWR_GLOBALS.DBG_PROCESS_ROUTE)>0:
+            HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(f"{fname} [{ffile}:{fline}]")
+             # --- Aufrufzähler ---
+            HCWR_GLOBALS.DBG_CALL_COUNT[f"{fname} [{ffile}:{fline}]"] = HCWR_GLOBALS.DBG_CALL_COUNT.get(f"{fname} [{ffile}:{fline}]", 0) + 1
+            # speichern für Call-Tree
+            HCWR_GLOBALS.DBG_CALL_TREE.append((depth, f"{fname} [{ffile}:{fline}]"))
+            #print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
     return caller.function
 
 def show_process_route():
