@@ -786,7 +786,7 @@ if not os.path.exists(HCWR_GLOBALS.KW_REPORT_DIR) and not HCWR_GLOBALS.args.dry_
     os.makedirs(HCWR_GLOBALS.KW_REPORT_DIR)
 
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(f" Feiertage: {feiertage}h, Urlaub: {urlaub}h, Krank: {krank}h, Abwesend: {abwesend}h, Überstunden: {kw_overhours_add}h", "", f"Info zu KW {HCWR_GLOBALS.args.week}")
+    info(f" Feiertage: {format_decimal(feiertage)}, Urlaub: {format_decimal(urlaub)}, Krank: {format_decimal(krank)}, Abwesend: {format_decimal(abwesend)}, Überstunden: {format_decimal(kw_overhours_add)}", "", f"Info zu KW {HCWR_GLOBALS.args.week}")
     info(f" Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, Std KW = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
 if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
@@ -809,7 +809,9 @@ if HCWR_GLOBALS.PROC_NAME in "hcoh":
         HO = Fore.YELLOW
     else:
         HO = Fore.MAGENTA
-    info(HO + f"  {kw_old_overhours} " + SC + f"{HCWR_GLOBALS.SIGN} {kw_overhours_add}" + Fore.WHITE + f" = " + IC + f"{kw_stundenkonto} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
+    info(HO + f"  {format_decimal(kw_old_overhours)} " + 
+    SC + f"{HCWR_GLOBALS.SIGN} {format_decimal(kw_overhours_add)}" + 
+    Fore.WHITE + f" = " + IC + f"{format_decimal(kw_stundenkonto)} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
     sys.exit(0)
 
 REPORT = generate_report(WORK_HOURS, kw_should, HCWR_GLOBALS.CONTRACT_HOURS, feiertage, urlaub,
