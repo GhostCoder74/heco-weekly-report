@@ -27,7 +27,7 @@ import inspect
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 from hcwr_utils_mod import  input_with_prefill
 
 def update_config_comments():
@@ -61,6 +61,7 @@ def update_config_comments():
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nnew_lines = {new_lines}")
+        show_process_route()
         sys.exit(0)
 
 
@@ -79,6 +80,7 @@ def extract_name():
                 return match.group(1).strip()
         else:
             info(f"{fname}:\nName = {match.group(1).strip()}")
+            show_process_route()
             sys.exit(0)
     else:
         if not fname in HCWR_GLOBALS.DBG_BREAK_POINT:
@@ -86,6 +88,7 @@ def extract_name():
             return get_name_from_config()
         else:
             info(f"{fname}:\nName = {get_name_from_config()}")
+            show_process_route()
             sys.exit(0)
 
 # TODO: Hole den Namen aus der Config "~.config/hkwreport.conf"
@@ -101,6 +104,7 @@ def get_name_from_config():
         HCWR_GLOBALS.FULLNAME = HCWR_GLOBALS.CFG.get("General", "fullname")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info("{fname}:\nHCWR_GLOBALS.FULLNAME = {HCWR_GLOBALS.FULLNAME}")
+        show_process_route()
         sys.exit(0)
     return HCWR_GLOBALS.FULLNAME
 
@@ -159,6 +163,7 @@ def get_or_create_projects_id_map():
         debug(f"new_projects_id_map = {new_projects_id_map}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nnew_projects_id_map = {new_projects_id_map}")
+        show_process_route()
         sys.exit(0)
 
     return new_projects_id_map
@@ -205,6 +210,7 @@ def get_or_create_wdayhours_map():
     wdayhours_map = {day: float(HCWR_GLOBALS.CFG['Workdays'][day]) for day in weekdays}
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nwdayhours_map = {wdayhours_map}")
+        show_process_route()
         sys.exit(0)
 
     return wdayhours_map
@@ -236,6 +242,7 @@ def set_default_cons(interactive=False):
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nHCWR_GLOBALS.CFG = {HCWR_GLOBALS.CFG}")
+        show_process_route()
         sys.exit(0)
 
 def get_config(call_from=None):
@@ -318,6 +325,7 @@ def get_config(call_from=None):
              info(f"{fname}:\nweekhours = {weekhours}, week = 1")
         else:
              info(f"{fname}:\nweekhours = {weekhours}, week = {week}")
+        show_process_route()
         sys.exit(0)
 
     if year != date.today().year:
@@ -344,6 +352,7 @@ def set_weekhours():
         HCWR_GLOBALS.CFG['General']['weekhours'] = str(weekhours_seconds // 3600)  # In Stunden speichern
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nweekhours = {HCWR_GLOBALS.CFG['General']['weekhours']}")
+        show_process_route()
         sys.exit(0)
     # Konfigurationsdatei speichern
     update_config(HCWR_GLOBALS.CFG)
@@ -366,6 +375,7 @@ def set_heco_db_path():
     update_config(HCWR_GLOBALS.CFG)
     info(f"Config file updated with path: ", db_path)
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
 
 def configure_interactive():
@@ -418,6 +428,7 @@ def configure_interactive():
     update_config(HCWR_GLOBALS.CFG)
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nHCWR_GLOBALS.CFG = {HCWR_GLOBALS.CFG}")
+        show_process_route()
         sys.exit(0)
 
 def set_first_workday():
@@ -442,6 +453,7 @@ def set_first_workday():
     update_config(HCWR_GLOBALS.CFG)
     info(f"Config file updated with firstday: {firstday}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
 
 def update_config(new_config):
@@ -485,6 +497,7 @@ def update_config(new_config):
         info("Keine Änderungen an der Konfiguration vorgenommen.", "")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
 
 def get_calendar_week(date_str):
@@ -498,6 +511,7 @@ def get_calendar_week(date_str):
         iso_year, iso_week, _ = date_obj.isocalendar()
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"{fname}:\niso_year = {iso_year}, iso_week = {iso_week}")
+            show_process_route()
             sys.exit(0)
         return iso_year, iso_week
     except ValueError:
@@ -560,11 +574,13 @@ def parse_week_env(timestamp):
                 HCWR_GLOBALS.args.year = isocal[0]
     except Exception as e:
         warning(f"Fehler beim Parsen von WEEK/YEAR: ", e, "Error")
+        show_process_route()
         sys.exit(1)
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"HCWR_GLOBALS.args.week = {HCWR_GLOBALS.args.week}")
         info(f"HCWR_GLOBALS.args.year = {HCWR_GLOBALS.args.year}")
+        show_process_route()
         sys.exit(0)
 
 def isoweek(date_string, year, week):
@@ -576,12 +592,14 @@ def isoweek(date_string, year, week):
         d = datetime.strptime(date_string, "%Y-%m-%d").isocalendar()
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"{fname}:\nd = {d}, year = {year}, week = {week}")
+            show_process_route()
             sys.exit(0)
 
         return d[0] == int(year) and d[1] == int(week)
     except:
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"{fname}:\nFailed!")
+            show_process_route()
             sys.exit(0)
         return False
 
@@ -612,12 +630,14 @@ def get_week_hours(conn, year, week, first_week=None):
     row = cursor.fetchone()
     if not row:
         warning(f"No Data","found","ERROR")
+        show_process_route()
         sys.exit(1)
     elif int(HCWR_GLOBALS.DBG_LEVEL) == 60:
         debug(f"row = {row}")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(Decimal(row[0]) if row and row[0] is not None else Decimal("0.0"))
+        show_process_route()
         sys.exit(0)
 
     # Convert to Decimals and ensure fallback to 0.0 if None
@@ -645,21 +665,17 @@ def get_weekday_hours_per_day(conn, year, week):
     row = cursor.fetchone()
     if not row:
         warning(f"No Data","found","ERROR")
+        show_process_route()
         sys.exit(1)
     elif int(HCWR_GLOBALS.DBG_LEVEL) == 60:
         debug(f"row = {row}")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(tuple(Decimal(val).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if val is not None else Decimal("0.0") for val in row))
+        show_process_route()
         sys.exit(0)
 
     # Convert to Decimals and ensure fallback to 0.0 if None
     return tuple(Decimal(val).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if val is not None else Decimal("0.0") for val in row)
 
-now = datetime.now()
-if not HCWR_GLOBALS.args.week or not HCWR_GLOBALS.args.year:
-    try:
-        parse_week_env(now)
-    except Exception as e:
-        print(f"Detials: {e}")
 

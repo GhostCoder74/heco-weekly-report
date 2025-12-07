@@ -21,7 +21,7 @@ import sys
 import time
 
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name 
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 
 def ssh_config_check():
     """
@@ -78,6 +78,7 @@ def ssh_config_check():
         f.writelines(config_lines)
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
 
 def checkNfetch_file_from_NIS(remote_path, local_dest, ssh_host="hq"):
@@ -94,6 +95,7 @@ def checkNfetch_file_from_NIS(remote_path, local_dest, ssh_host="hq"):
     - True  bei Erfolg (Datei existiert oder erfolgreich übertragen)
     - False bei Fehler
     """
+    fname = get_function_name()
     ssh_config_check()
 
     if os.path.isfile(local_dest):

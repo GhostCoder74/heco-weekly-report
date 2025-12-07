@@ -25,9 +25,11 @@ import re
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
 from hcwr_config_mod import get_calendar_week
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+from hcwr_utils_mod import progress_bar
 
 def validate_date(date_string):
+    fname = get_function_name()
     # Definieren Sie einen regulären Ausdruck, um das Format YYYY-MM-DD zu überprüfen
     pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
     if pattern.match(date_string):
@@ -36,6 +38,7 @@ def validate_date(date_string):
         return False
 
 def get_date(days_ago):
+    fname = get_function_name()
     if validate_date(days_ago):
         today = date.fromisoformat(args.date)
         return today.strftime("%Y-%m-%d")
@@ -53,6 +56,7 @@ def get_date(days_ago):
             return date.today().strftime("%Y-%m-%d")
 
 def get_total_time(project_id, date_str, cursor):
+    fname = get_function_name()
     # Datum in datetime-Objekt konvertieren
     date = datetime.strptime(date_str, "%Y-%m-%d")
 
@@ -76,6 +80,7 @@ def get_total_time(project_id, date_str, cursor):
 
 
 def get_weekly_total_time(project_id, start_date, kw, cursor):
+    fname = get_function_name()
     # Wenn kein Startdatum angegeben ist, setze das Startdatum auf Montag der Kalenderwoche
     if not start_date:
         date = datetime.strptime(kw + "-1", "%Y-%W-%w")
@@ -99,10 +104,12 @@ def get_weekly_total_time(project_id, start_date, kw, cursor):
 
 
 def to_seconds(time_str):
+    fname = get_function_name()
     hours, minutes, seconds = map(int, time_str.split(':'))
     return hours * 3600 + minutes * 60 + seconds
 
 def to_time_format(total_seconds):
+    fname = get_function_name()
     hours, remainder = divmod(total_seconds, 3600)
     debug (f"hours, remainder => {hours}, {remainder}")
     minutes, seconds = divmod(remainder, 60)
@@ -112,12 +119,13 @@ def to_time_format(total_seconds):
     return result
 
 def get_monday_of_week(kw, year):
+    fname = get_function_name()
     # Monday is 1, Sunday is 7 in ISO format
     monday = date.fromisocalendar(year, kw, 1)
     return monday.strftime("%Y-%m-%d")
 
 
-def overhours_main(conn=None, kw=None):
+def get_kw_overhours(conn=None, kw=None):
     fname = get_function_name()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nkw = {kw}")
@@ -135,13 +143,14 @@ def overhours_main(conn=None, kw=None):
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info (f"first_kw = {first_kw}")
     for i in range(first_kw, kw + 1):
-        #result = subprocess.run(["hkwdreport", "-za", "-kw", str(i)], stdout=subprocess.PIPE, text=True)
-        result = hcwrd_main(conn, i, None, True, None, None)
+        result = get_kw_overhours_add(conn, i, None, True, None, None)
         for line in result:
             if 'KW Zeitkonto' in line:
                 time_str = line.split()[2]
                 debug (time_str)
                 times.append(time_str)
+        progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+        HCWR_GLOBALS.PBAR_VAL += 1
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"times = {times}")
@@ -169,10 +178,11 @@ def overhours_main(conn=None, kw=None):
     result = float(Decimal(hours)+Decimal(minutes)/60*int(str(f"{sign}1")))
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"sign, result = {sign}, {result}")
+        show_process_route()
         sys.exit(0)
     return sign, result
 
-def hcwrd_main(conn=None,kw=None,zk=None,za=None,date=None,t=None):
+def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
     fname = get_function_name()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nkw = {kw}, zk = {zk}, za = {za}, date = {date}, t = {t}")
@@ -266,6 +276,7 @@ def hcwrd_main(conn=None,kw=None,zk=None,za=None,date=None,t=None):
             return p, float(Decimal(whours)+Decimal(wminutes)/60*int(str(f"{p}1")))
         
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            show_process_route()
             sys.exit(0)
     else:
         hours, remainder = divmod(day_total_time, 3600)
@@ -275,4 +286,5 @@ def hcwrd_main(conn=None,kw=None,zk=None,za=None,date=None,t=None):
     # Datenbankverbindung schließen
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)

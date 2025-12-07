@@ -26,7 +26,7 @@ from decimal import Decimal, InvalidOperation
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 from hcwr_utils_mod import format_decimal, get_wday_diff, input_with_prefill, chgrp
 from hcwr_extexec_mod import run_wochenfazit
 from hcwr_tasks_mod import get_my_tasks 
@@ -146,6 +146,7 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
         report_lines.append(f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {format_decimal(round(zk_minus, 2))}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         print("\n".join(report_lines))
+        show_process_route()
         sys.exit(1)
 
     return "\n".join(report_lines)
@@ -155,6 +156,8 @@ def handle_output(report_content: str):
     """
     Gibt den Bericht als STDOUT oder Datei zum editieren geöffnet in vim
     """
+    fname = get_function_name()
+
     if HCWR_GLOBALS.args.dry_run:
         print(report_content)
     else:
@@ -172,20 +175,23 @@ def handle_output(report_content: str):
         subprocess.call(["vim", tempname])
 
 	# Nach Bearbeitung fragen, ob wochenfazit.py zur Prüfung ausgeführt werden soll (Enter = Ja)
-        prompt = (f"Soll der Bericht nun " + get_fore_color("BLUE") + Style.BRIGHT + f"'{tempname}'" + Style.RESET_ALL + f"  geprüft werden, von \n\n {HCWR_GLOBALS.WF_CHECK_PATH}\n\n [J/n]: ")
+        prompt = (f"Soll der Bericht nun " + Fore.BLUE + Style.BRIGHT + f"'{tempname}'" + Style.RESET_ALL + f"  geprüft werden, von \n\n {HCWR_GLOBALS.WF_CHECK_PATH}\n\n [J/n]: ")
         answer = input_with_prefill(prompt, "", "").strip().lower()
         if answer in ("", "j", "ja", "y", "yes"):
             run_wochenfazit(tempname)
 	# Nach Bearbeitung fragen, ob speichern (Enter = Ja)
-        prompt = (f"Soll der Bericht nach " + get_fore_color("BLUE") + Style.BRIGHT + f"'{HCWR_GLOBALS.KW_REPORT_FILE}'" + Style.RESET_ALL + f" gespeichert werden? [J/n]: ")
+        prompt = (f"Soll der Bericht nach " + Fore.BLUE + Style.BRIGHT + f"'{HCWR_GLOBALS.KW_REPORT_FILE}'" + Style.RESET_ALL + f" gespeichert werden? [J/n]: ")
         answer = input_with_prefill(prompt, "", "").strip().lower()
         if answer in ("", "j", "ja", "y", "yes"):
             shutil.copy(tempname, HCWR_GLOBALS.KW_REPORT_FILE)
             os.remove(tempname)
-            print(get_fore_color("GREEN") + Style.BRIGHT + f"\n✅ Bericht gespeichert unter: {HCWR_GLOBALS.KW_REPORT_FILE}" + Style.RESET_ALL, file=sys.stderr)
+            print(Fore.GREEN + Style.BRIGHT + f"\n✅ Bericht gespeichert unter: {HCWR_GLOBALS.KW_REPORT_FILE}" + Style.RESET_ALL, file=sys.stderr)
             chgrp(HCWR_GLOBALS.KW_REPORT_FILE, HCWR_GLOBALS.args.group)
         else:
             os.remove(tempname)
-            print(get_fore_color("RED") + Style.BRIGHT + f"X Bericht wurde verworfen." + Style.RESET_ALL, file=sys.stderr)
+            print(Fore.RED + Style.BRIGHT + f"X Bericht wurde verworfen." + Style.RESET_ALL, file=sys.stderr)
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
+        sys.exit(0)
 

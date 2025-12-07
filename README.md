@@ -155,7 +155,25 @@ YEAR=2025 WEEK=19 hcwr -n
 ```
 ### Generate summary to a file
 ```bash
-hcwr -w 22 -y 2025 -o weekly-summary.txt
+hcwr -w 22 [-y 2025] -o weekly-summary.txt
+```
+### Getting over hours of given week by using hcoh instead of hcwr
+```bash
+hcoh -w 22 [-y 2025]
+```
+
+#### Example output
+```bash
+Running as: hcoh 
+Info: Running Automigration ... 
+Info: Projektbeschreibungen in time.db sind aktuell. 
+Start: Stundenberechnung 
+100.00% [█████████████████████████████████████████████████████████████
+Fertig: Stundenberechnung 
+Info zu KW 22:  Feiertage: 8.0h, Urlaub: 0.0h, Krank: 0.0h, Abwesend: 0.0h, Überstunden: 5.75h 
+Std/Tag KW 22:  Mo: 8.3, Di: 8.8, Mi: 8.8, Do: 0.0, Fr: 0.0, Sa: 0.0, So: 0.0, Std KW = 25.8 
+Arbeitsstunden: 25,8 von 32 (Vertrag: 40 Feiertage: 8 Urlaub: 0 Abwesend: 0) 
+Stundenkonto:   19.75 - 5.75 = 14.0 Minusstunden
 ```
 
 ### Initialize a fresh time.db

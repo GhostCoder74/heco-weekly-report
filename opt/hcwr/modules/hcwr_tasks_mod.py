@@ -21,7 +21,7 @@ from decimal import Decimal, InvalidOperation
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name 
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 from hcwr_json_mod import to_json, output
 from hcwr_utils_mod import format_decimal
 
@@ -63,6 +63,7 @@ def format_string_to_block(s: str, max_line_length: int = 80) -> str:
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nresult = {result}")
+        show_process_route()
         sys.exit(0)
 
     return result.rstrip("\n")
@@ -99,17 +100,20 @@ def get_my_tasks():
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nline = {line}")
+        show_process_route()
         sys.exit(0)
 
     return lines
 
 def calculate_time_difference(start_time, end_time):
+    fname = get_function_name()
     start = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
     end = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
     time_difference = end - start
     return time_difference.total_seconds()
 
 def format_time_difference(seconds):
+    fname = get_function_name()
     hours = int(seconds // 3600)
     minutes = int((seconds // 60) % 60)
     formatted_time = f"{hours}:{minutes:02}h"
@@ -119,6 +123,7 @@ def format_time_difference(seconds):
     return formatted_time
 
 def format_date(date_string):
+    fname = get_function_name()
     date_object = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
     formatted_date = date_object.strftime("%d.%m.%Y")
     return formatted_date
@@ -165,6 +170,7 @@ def parse_duration(duration):
     result = int(h * 3600 + m * 60)
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nresult = {result}")
+        show_process_route()
         sys.exit(0)
 
     return result
@@ -387,6 +393,7 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
             for line in new_data:
                 output(line)
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            show_process_route()
             sys.exit(0)
         return 
 
@@ -399,6 +406,7 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
     if asListObj:
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"{fname}:\ndata = {data}")
+            show_process_route()
             sys.exit(0)
         return data
 

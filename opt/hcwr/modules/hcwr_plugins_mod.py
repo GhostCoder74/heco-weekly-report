@@ -21,10 +21,12 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from decimal import Decimal, InvalidOperation
 import json
+import colorama
+from colorama import Fore, Style
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name, debug_sql
+from hcwr_dbg_mod import debug, info, warning, get_function_name, debug_sql, show_process_route
 from hcwr_utils_mod import get_wday_short_name, add_decimal_hours, command_exists
 
 # set public holidays for this and next week
@@ -62,6 +64,7 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
 
     # Helper: Einfügen eines Feiertags
     def insert_one(date_str, name):
+        fn = get_function_name()
         start_ts = f"{date_str} 00:00:00"
         stop_ts  = f"{date_str} 23:59:59"
         desc     = f"Feiertag: {name}"
@@ -89,6 +92,7 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"result = {result}")
+        show_process_route()
         sys.exit(0)
     else:
         return result
@@ -171,11 +175,13 @@ def get_holidays_this_and_next_week(year, reference_date=None):
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nresult = {result}")
+        show_process_route()
         sys.exit(0)
 
     return result
 
 def date_to_ymd(date_obj):
+    fname = get_function_name()
     if isinstance(date_obj , str):
         return date_obj
     return date_obj.strftime("%Y-%m-%d")
@@ -229,12 +235,13 @@ def is_feiertag(date_obj, cursor):
                 row = cursor.fetchone()
                 if fn in HCWR_GLOBALS.DBG_BREAK_POINT:
                     info(f"{fn}:\ndate_str = {dstr}, row = {row[1]}")
-                    #sys.exit(0)
+                    show_process_route()
+                    sys.exit(0)
                 if row:
                     info(f"Manuellen Eintrag für Feiertag gefunden: " + 
-                    get_fore_color("MAGENTA") + 
-                    dstr + get_fore_color("WHITE") + " ist " +
-                    get_fore_color("MAGENTA") + row[1])
+                    Fore.MAGENTA + 
+                    dstr + Fore.WHITE + " ist " +
+                    Fore.MAGENTA + row[1])
                     return dstr
                 return False    
 
@@ -255,6 +262,7 @@ def is_feiertag(date_obj, cursor):
                         return hdate
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         info(f"return status: False")
         sys.exit(0)
 
@@ -529,6 +537,7 @@ def insert_LOA_entries(db_connection, hstart_date, pname="Urlaub", hstop_date=No
     # Entscheidet INSERT / UPDATE / DELETE.
     # ----------------------------------------------------------------------
     def run_sql_query(date_str):
+        fn = get_function_name()
         start_ts = None
         m = HCWR_GLOBALS.REGEX_DATETIME
         r = m.search(date_str)
@@ -650,6 +659,7 @@ def insert_LOA_entries(db_connection, hstart_date, pname="Urlaub", hstop_date=No
     # Debug: Ergebnisse zeigen
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"results = {results}")
+        show_process_route() 
         sys.exit(0)
 
     return results

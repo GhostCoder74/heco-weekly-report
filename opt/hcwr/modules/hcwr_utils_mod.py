@@ -22,19 +22,26 @@ import os
 import grp
 import getpass
 import sys
+import time
+import itertools
+from colorama import init, Fore, Style
+init()
+
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from decimal import Decimal, InvalidOperation
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name 
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 
 # Set locale for decimal formatting
 locale.setlocale(locale.LC_ALL, '')
 HCWR_GLOBALS.DECIMAL_POINT = locale.localeconv()['decimal_point']
 
 def hours_to_hms(hours_str, MODE=2):
+    fname = get_function_name()
+
     hours = float(hours_str.replace(",", "."))
     td = timedelta(hours=hours)
     total_seconds = int(td.total_seconds())
@@ -50,19 +57,23 @@ def hours_to_hms(hours_str, MODE=2):
 
 def check_directory_exists(file_path):
     """Prüft ob ein Verzeichnis Pfad exsistiert und ein wirklich ein Verzeichnis ist!"""
+    fname = get_function_name()
     directory = os.path.dirname(file_path)
     return os.path.isdir(directory)
 
 def command_exists(cmd: str) -> bool:
     """Prüft, ob ein Shell‑Befehl im PATH vorhanden ist."""
+    fname = get_function_name()
     return shutil.which(cmd) is not None
 
 def which_path(cmd: str) -> str | None:
     """Gibt den absoluten Pfad zum Befehl zurück oder None."""
+    fname = get_function_name()
     return shutil.which(cmd)
 
 def format_decimal(value):
     """Formatiert einen Dezimalwert entsprechend dem Gebietsschema, entfernt unnötige Nullen und gibt ‚0‘ für Null zurück."""
+    fname = get_function_name()
     if value == 0 or value == 0.0:
         return "0"
 
@@ -76,6 +87,7 @@ def format_decimal(value):
     return formatted_value
 
 def add_decimal_hours(datetime_str, dec_hours):
+    fname = get_function_name()
     # Datum string → datetime Objekt
     dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
 
@@ -93,6 +105,7 @@ def is_valid_ymd(date_str):
     Prüft, ob date_str exakt dem Format YYYY-MM-DD entspricht.
     Liefert True/False.
     """
+    fname = get_function_name()
     if not isinstance(date_str, str):
         return False
     
@@ -105,14 +118,17 @@ def is_valid_ymd(date_str):
         return False
 
 def get_wday_short_name(date_str):
+    fname = get_function_name()
     # datum_str z. B. "2025-12-01"
     d = datetime.strptime(date_str, "%Y-%m-%d")
     tage = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     return tage[d.weekday()]
 
 def input_with_prefill(prompt, prefill, end='\n'):
+    fname = get_function_name()
     """Input Prompt, der die Möglichkeit bietet, das Value zu setzen umd es bearbeiten zu können."""
     def hook():
+        fname = get_function_name()
         readline.insert_text(prefill)
         readline.redisplay()
     readline.set_pre_input_hook(hook)
@@ -135,6 +151,7 @@ def check_user_in_group(group_name):
     Raises:
         ValueError: Wenn die Gruppe nicht existiert oder der Benutzer kein Mitglied ist.
     """
+    fname = get_function_name()
     try:
         grp.getgrnam(group_name)  # Prüft, ob Gruppe existiert
     except KeyError:
@@ -169,6 +186,7 @@ def version():
 
     Die Ausgabe erfolgt direkt auf die Standardausgabe.
     """
+    fname = get_function_name()
 
     print(f"""\
 Version: {HCWR_GLOBALS.VERSION}
@@ -204,6 +222,7 @@ def has_wday_absence(conn, weekday_num, year, week):
     count = cursor.fetchone()[0]
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\ncount = {count}")
+        show_process_route()
         sys.exit(0)
 
     return count > 0
@@ -250,6 +269,7 @@ def get_wday_diff(conn, wdays, year, week):
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             result = "\n".join(lines)
             info(f"{fname}:\nlines = {result}")
+            show_process_route()
             sys.exit(0)
         return "\n".join(lines)
 
@@ -257,6 +277,7 @@ def chgrp(path, group_name):
     """
     Setzt die Gruppenberechtigung für die Berichtsdatei "path" auf die eingestelle Gruppe Default "intevation"
     """
+    fname = get_function_name()
     try:
         gid = grp.getgrnam(group_name).gr_gid  # GID der Gruppe holen
         stat_info = os.stat(path)
@@ -269,3 +290,55 @@ def chgrp(path, group_name):
         print("Keine Berechtigung, um die Gruppenzugehörigkeit zu ändern.")
     except Exception as e:
         print("Fehler:", e)
+
+
+def progress_bar(pos, maxval, msg=""):
+    """
+    Zeichnet eine farbige Progressbar mit animiertem Spinner.
+    Gesamtlänge: max 80 Zeichen
+    Prozentzahl vorne, optionaler Text am Ende.
+    """
+    if not HCWR_GLOBALS.args.verbose and not HCWR_GLOBALS.args.dry_run:
+        return
+
+    SPINNER = itertools.cycle(["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"])
+    # Sicherheitskorrektur
+    if maxval <= 0:
+        maxval = 1
+    pct = (pos / maxval) * 100
+    if pct > 100:
+        pct = 100
+    percent_str = f"{pct:6.2f}% "  # z.B. " 45.30% "
+    
+    spinner = next(SPINNER)
+
+    # Reservierte Breite
+    max_width = 73
+
+    # Wie viel Platz bleibt für msg?
+    msg_str = f" {msg}" if msg else ""
+
+    # Breite der Progressbar
+    bar_width = max_width - len(percent_str) - 4 # 2 Klammern + 2 Spaces
+
+    if bar_width < 5:
+        bar_width = 5  # Mindestbreite
+
+    filled = int((pos / maxval) * bar_width)
+    empty = bar_width - filled
+
+    # Farbige Bereiche
+    bar = (
+        Fore.GREEN + "█" * filled +
+        Fore.RED + "." * empty +
+        Style.RESET_ALL
+    )
+
+    out = f"\r{percent_str}[{bar}  ]"
+
+    # Kürzen falls >80 Zeichen
+    out = out[:80]
+
+    sys.stdout.write(out)
+    sys.stdout.flush()
+        

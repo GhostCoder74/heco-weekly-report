@@ -22,10 +22,12 @@ import re
 import os
 import sys
 from datetime import datetime, date, timedelta
+import colorama
+from colorama import Fore, Style
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 from hcwr_utils_mod import input_with_prefill
 from hcwr_config_mod import update_config_comments, update_config, get_config
 
@@ -45,6 +47,7 @@ def init_heco(kw=None):
             checkNfetch_file_from_NIS(HCWR_GLOBALS.DEFULT_SQL_TEMPLATE, HCWR_GLOBALS.SQL_TEMPLATE)
         else:
             warning(f"Da das in {HCWR_GLOBALS.CFG_FILE} definierte SQL-Template für heco existiert nicht!\nBitte dort hinterlegen!\n\n","Abbruch!")
+            show_process_route()
             sys.exit(1)
 
     if not os.path.exists(HCWR_GLOBALS.WF_CHECK_PATH):
@@ -56,10 +59,12 @@ def init_heco(kw=None):
             checkNfetch_file_from_NIS(HCWR_GLOBALS.DEFAULT_WF_CHECK_PATH, HCWR_GLOBALS.WF_CHECK_PATH)
         else:
             warning(f"Da das in {HCWR_GLOBALS.CFG_FILE} definierte wochenfazit.py für heco existiert nicht!\nBitte dort hinterlegen!\n\n","Abbruch!")
+            show_process_route()
             sys.exit(1)
 #TODO: Postgress Support weiter ein-/ausbauen
     if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
         info("Derzeit wird nur SQLite unterstutzt für die Initalisierung von heco.")
+        show_process_route()
         sys.exit(1)
     else:
 
@@ -74,6 +79,7 @@ def init_heco(kw=None):
 
         if os.path.exists(db_path):
             info(f"Es exsistiert bereits eine {db_path}", "Es wird da hier abgebrochen!")
+            show_process_route()
             sys.exit(1)
             return
 
@@ -96,6 +102,7 @@ def init_heco(kw=None):
     configure_interactive()
 
     if not auto_migration():
+        show_process_route()
         sys.exit(1)
 
 def is_current_week_and_complete(db_path, year, kw):
@@ -113,6 +120,7 @@ def is_current_week_and_complete(db_path, year, kw):
 
     # Wochenbeginn (Montag) und Ende (Sonntag) berechnen
     def get_week_bounds(year, kw):
+        fname = get_function_name()
         # ISO-Woche: Montag als erster Tag
         monday = datetime.strptime(f'{year}-W{kw:02}-1', "%G-W%V-%u")
         return monday
@@ -148,6 +156,7 @@ def is_current_week_and_complete(db_path, year, kw):
     all_days_complete = (len(missing_days) == 0)
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nis_current = {is_current}, all_days_complete = {all_days_complete}, missing_days = {missing_days}")
+        show_process_route()
         sys.exit(0)
 
     return is_current, all_days_complete, missing_days
@@ -315,6 +324,7 @@ def auto_migration():
         except Exception as e:
             success = False
             warning(f"heco DB aktualisieren: Fehler beim Aktualisieren der {dbpath}:", e)
+            show_process_route()
             sys.exit(1)
         finally:
             success = True
@@ -339,6 +349,7 @@ def auto_migration():
         except Exception as e:
             success = False
             warning(f"Spalte 'category' in Datenbank: Fehler beim Anpassen der {HCWR_GLOBALS.DB_KEYWORD_ID_PATH}:", e)
+            show_process_route()
             sys.exit(1)
         finally:
             success = True
@@ -347,6 +358,7 @@ def auto_migration():
         debug(f"auto_migration: success = {success}")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
 
     return success
@@ -414,6 +426,7 @@ def merge_results(result):
             debug(f"****************************************************")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nfinal_result = {final_result}")
+        show_process_route()
         sys.exit(0)
 
     return final_result
@@ -431,6 +444,7 @@ def get_project_id(cursor, category):
         debug(f"result = {result}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nresult = {result}")
+        show_process_route()
         sys.exit(0)
 
     return  result[0] if result else None
@@ -491,7 +505,7 @@ def get_UK_and_UUK(conn, base_sql, category, params):
                     info("Changed entry : ", entry_new)
                     if entry != entry_new:
                         prompt = (f"Möchten Sie den/die Einträge auch in der heco time.db für " +
-                                            get_fore_color("YELLOW") + Style.BRIGHT +
+                                            Fore.YELLOW + Style.BRIGHT +
                                             f"{HCWR_GLOBALS.args.year} KW {HCWR_GLOBALS.args.week}" + Style.RESET_ALL +
                                             f" nun korrigieren? {entry}? [j/N]: ")
 
@@ -503,9 +517,9 @@ def get_UK_and_UUK(conn, base_sql, category, params):
                         else:
                             print()
                             info("Keine Änderung vorgenommen für " +
-                                 get_fore_color("YELLOW") + Style.BRIGHT +
+                                 Fore.YELLOW + Style.BRIGHT +
                                  f"{HCWR_GLOBALS.args.year} KW {HCWR_GLOBALS.args.week} von Entry " +
-                                 get_fore_color("BLUE")
+                                 Fore.BLUE
                                  + f"{entry}" + Style.RESET_ALL + " in : ",
                                  "heco time.db")
                         entry = entry_new
@@ -544,6 +558,7 @@ def get_UK_and_UUK(conn, base_sql, category, params):
         debug(f"get_UK_and_UUK: uk_entry = {uk_entry}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nuk_entry = {uk_entry}")
+        show_process_route()
         sys.exit(0)
 
     if uk_entry:
@@ -588,6 +603,7 @@ def initialize_contracts_db():
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\ncontracts = {contracts}")
+        show_process_route()
         sys.exit(0)
 
 def get_contract_id(entry, db_path=None):
@@ -641,6 +657,7 @@ def get_contract_id(entry, db_path=None):
 
     # Positionstest je nach keyword_place
     def pos_match(keyword):
+        fn = get_function_name()
         kw = keyword.lower()
 
         # A: überall erlaubt → "*" oder None → User-Auswahl möglich
@@ -689,6 +706,7 @@ def get_contract_id(entry, db_path=None):
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nfound = {found}")
+        show_process_route()
         sys.exit(0)
 
     # Verhalten je nach keyword_place
@@ -728,11 +746,10 @@ def get_contract_id(entry, db_path=None):
 
 def show_contract_keywords():
     """Zeigt alle gespeicherten Contract-Keywords tabellarisch an."""
+    fname = get_function_name()
     if not os.path.exists(HCWR_GLOBALS.DB_KEYWORD_ID_PATH):
         info("Noch keine Contract-Keyword-Datenbank vorhanden.","Initialisiere DB")
         initialize_contracts_db()
-
-    fname = get_function_name()
 
     conn = HCWR_GLOBALS.DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
     cursor = conn.cursor()
@@ -753,15 +770,15 @@ def show_contract_keywords():
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nrows = {rows}")
+        show_process_route()
         sys.exit(0)
 
 def delete_contract_keyword():
+    fname = get_function_name()
     """Löscht ein einzelnes Keyword aus der Contract-Datenbank."""
     if not os.path.exists(HCWR_GLOBALS.DB_KEYWORD_ID_PATH):
         info("Noch keine Contract-Keyword-Datenbank vorhanden.","Initialisiere DB")
         initialize_contracts_db()
-
-    fname = get_function_name()
     
     show_contract_keywords()
 
@@ -796,6 +813,7 @@ def delete_contract_keyword():
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nresult = {result}")
+        show_process_route()
         sys.exit(0)
 
 def set_contract_keywords(keywords):
@@ -846,6 +864,7 @@ def set_contract_keywords(keywords):
     conn.close()
     info(f"{inserted} Keyword(s)"," gespeichert.")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        show_process_route()
         sys.exit(0)
     
 def berechne_abwesenheiten(conn, year, week):
@@ -872,6 +891,7 @@ def berechne_abwesenheiten(conn, year, week):
                 break
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"rows = {rows}")
+        show_process_route()
         sys.exit(0)
     return result
 
@@ -884,7 +904,7 @@ def get_last_entry(db_connection):
         dict mit allen Feldern des Datensatzes,
         oder None wenn die Tabelle leer ist.
     """
-
+    fname = get_function_name()
     cursor = db_connection.cursor()
 
     sql = HCWR_GLOBALS.DB_QUERIES.get_last_record_of_eintries_today

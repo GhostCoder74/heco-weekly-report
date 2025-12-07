@@ -43,7 +43,7 @@ import colorama
 from colorama import Fore, Style
 import time
 import json
-
+from os.path import basename
 
 # Setze Pfad, wenn sqlite3_queries im Unterverzeichnis liegt (z. B. ./lib/)
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -167,7 +167,7 @@ parser.add_argument("-z", "--zeiterfassung", type=str,  help="Formatting for zei
 ########## MODULES IMPORT #########################################################
 # ../modules
 if not os.path.exists(MODULE_DIR):
-    warning("No Modules path found in:",MODULE_DIR,"ERROR")
+    print(Style.BRIGHT + Fore.RED + "ERROR: " + Fore.WHITE + "No Modules path found in: " + Fore.RED + MODULE_DIR + Style.RESET_ALL, file=sys.stderr)
     sys.exit(1)
 elif MODULE_DIR not in sys.path:
     sys.path.insert(0, MODULE_DIR)
@@ -181,7 +181,7 @@ elif MODULE_DIR not in sys.path:
             print(f"[DEBUG] Result from HCWR_GLOBALS_mod: HCWR_GLOBALS.args = {HCWR_GLOBALS.args}")
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_dbg_mod")
-        from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+        from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_remote_mod")
         from hcwr_remote_mod import ssh_config_check, checkNfetch_file_from_NIS
@@ -208,31 +208,36 @@ elif MODULE_DIR not in sys.path:
         from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_utils_mod")
-        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms
+        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms, progress_bar
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_wfout_mod")
         from hcwr_wfout_mod import generate_report, handle_output
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_extexec_mod")
-        from hcwr_extexec_mod import run_wochenfazit, get_kw_overhours_add, get_kw_overhours
+        from hcwr_extexec_mod import run_wochenfazit
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_tasks_mod")
         from hcwr_tasks_mod import get_my_tasks, fetch_and_display_entries
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_hcwrd_mod")
-        from hcwr_hcwrd_mod import hcwrd_main, overhours_main
+        from hcwr_hcwrd_mod import get_kw_overhours, get_kw_overhours_add
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_plugins_mod")
         from hcwr_plugins_mod import get_holidays_this_and_next_week, insert_LOA_entries, insert_holiday_entries
     except Exception as e:
         warning("Could not load modules from:",MODULE_DIR,"ERROR")
         print(f"Details: {e}")
+        show_process_route()
         sys.exit(1)
 
 HCWR_GLOBALS.args = parser.parse_args()
 
+fname = get_function_name()
+if HCWR_GLOBALS.PROC_NAME in "hcoh":
+    HCWR_GLOBALS.args.verbose = True
+
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(os.path.basename(sys.argv[0]))
+    info(HCWR_GLOBALS.PROC_NAME, "", Fore.GREEN + "Running as" + Style.RESET_ALL)
 
 if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
     debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
@@ -244,6 +249,7 @@ if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBA
 
 if HCWR_GLOBALS.args.version:
     version()
+    show_process_route()
     sys.exit(0)
 
 if HCWR_GLOBALS.GROUP:
@@ -253,6 +259,7 @@ if HCWR_GLOBALS.GROUP:
             HCWR_GLOBALS.args.group = HCWR_GLOBALS.GROUP
     except Exception as e:
         warning(f"Fehler beim Parsen von GROUP ", e, "Error")
+        show_process_route()
         sys.exit(1)
 
 if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
@@ -261,11 +268,13 @@ if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
 if os.path.exists(HCWR_GLOBALS.CFG_FILE):
     get_config("read_config")
     if not auto_migration() and HCWR_GLOBALS.args.init_heco is None:
+        show_process_route()
         sys.exit(1)
 else:
     warning(f"Keine Konfigurationsdatei gefunden:", HCWR_GLOBALS.CFG_FILE)
     # Automigration vorher durchlaufen lassen, falls es Änderungen gab die angepassterden müssen:
     if not auto_migration():
+        show_process_route()
         sys.exit(1)
     else:
         get_config("no_config")
@@ -282,34 +291,44 @@ if HCWR_GLOBALS.args.init_heco is not None:
         init_heco()  # Ohne KW
     else:
         init_heco(HCWR_GLOBALS.args.init_heco)  # Mit KW
+    show_process_route()
     sys.exit(0)
 
 if HCWR_GLOBALS.args.add_contract_keyword:
     set_contract_keywords([])
+    show_process_route()
     sys.exit(0)
 
 if HCWR_GLOBALS.args.show_keywords:
     show_contract_keywords()
+    show_process_route()
     sys.exit(0)
 
 if HCWR_GLOBALS.args.delete_keyword:
     delete_contract_keyword()
+    show_process_route()
     sys.exit(0)
 
 now = datetime.now()
 if not HCWR_GLOBALS.args.week or not HCWR_GLOBALS.args.year:
-    parse_week_env(now)
+    try:
+        parse_week_env(now)
+    except Exception as e:
+        print(f"Detials: {e}")
 
 try:
     if HCWR_GLOBALS.args.week and not len(str(HCWR_GLOBALS.args.week))<3:
         raise ValueError(f"Ungültiges Format für -w/-kw/--week: {HCWR_GLOBALS.args.week}")
+        show_process_route()
         sys.exit(1)
     if HCWR_GLOBALS.args.year and not len(str(HCWR_GLOBALS.args.year))==4:
         raise ValueError(f"Ungültiges Format für -y/--year: {HCWR_GLOBALS.args.year}")
+        show_process_route()
         sys.exit(1)
 
 except Exception as e:
     warning(f"Fehler beim Parsen : ", e, "Error")
+    show_process_route()
     sys.exit(1)
 
 HCWR_GLOBALS.MONDAY = date.fromisocalendar(HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week, 1)
@@ -317,6 +336,7 @@ HCWR_GLOBALS.SUNDAY = HCWR_GLOBALS.MONDAY + timedelta(days=6)
 
 if HCWR_GLOBALS.args.search and HCWR_GLOBALS.args.job_entries:
     fetch_and_display_entries()
+    show_process_route()
     sys.exit(0)
 
 if not HCWR_GLOBALS.args.absence:
@@ -324,7 +344,8 @@ if not HCWR_GLOBALS.args.absence:
 
     if not is_complete and is_now and not HCWR_GLOBALS.args.configure:
         info("Es sind noch keine Zeiten erfasst, für :", ", ".join(missing))
-        exit(1)
+        show_process_route()
+        sys.exit(1)
     
     
     HCWR_GLOBALS.PROJECTS_ID_MAP = get_or_create_projects_id_map()
@@ -334,6 +355,7 @@ if not HCWR_GLOBALS.args.absence:
         configure_interactive()
         # Config Default Example Kommentare in HCWR_GLOBALS.CFG_FILE einsetzen:
         update_config_comments()
+        show_process_route()
         sys.exit(0)
 
 weekhours, week = get_config()
@@ -368,6 +390,7 @@ if HCWR_GLOBALS.args.absence:
         elif failedmatch:
             Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
             warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
+            show_process_route()
             sys.exit(1)
     
     
@@ -377,7 +400,7 @@ if HCWR_GLOBALS.args.absence:
         if Absence in "ZKÜ": # Set start_date ONLY for ZKÜ Entry to "<YEAR>-01-01"
             msgZ = "eintragen oder aktualisieren, falls vorhanden"
             if MODE:
-                msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "LÖSCHEN" + get_fore_color("RED") + ", falls vorhanden"
+                msgZ = f"die Eintragung " + Fore.YELLOW + Style.BRIGHT + "LÖSCHEN" + Fore.RED + ", falls vorhanden"
             if start_date is None:
                 date_obj = datetime.now()
                 year = date_obj.year
@@ -389,17 +412,18 @@ if HCWR_GLOBALS.args.absence:
                 if (date_obj.year == target_date_obj.year and 
                     date_obj.month != target_date_obj.month and 
                     date_obj >= target_date_obj):
-                    warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + get_fore_color("YELLOW") + Style.BRIGHT + f"{target_date}" + get_fore_color("RED"), " liegt in der Vergangenheit!")
-                    warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
+                    warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + Fore.YELLOW + Style.BRIGHT + f"{target_date}" + Fore.RED, " liegt in der Vergangenheit!")
+                    warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.RED + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.RED + f"{msgZ}!")
                 else:
-                    info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("WHITE") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("WHITE") + f"{msgZ}!")
+                    info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.WHITE + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.WHITE + f"{msgZ}!")
                 
             else:
                 date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
-                warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + get_fore_color("YELLOW") + Style.BRIGHT + f"ZKÜ={H}:{M} " + get_fore_color("RED") + "für den " + get_fore_color("YELLOW") + f"{date_obj.year}-01-01 " + get_fore_color("RED") + f"{msgZ}!")
+                warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.RED + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.RED + f"{msgZ}!")
             prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
             answer = input_with_prefill(prompt, "", "").strip().lower()
             if not answer in ("", "j", "ja", "y", "yes"):
+                show_process_route()
                 sys.exit(1)
             else:
                 print()
@@ -440,32 +464,36 @@ if HCWR_GLOBALS.args.absence:
                     else:
                         next_start_time = result[fld]
     
-                info(f"{Absence} Buchung ab :" ,get_fore_color("YELLOW") + next_start_time)
+                info(f"{Absence} Buchung ab :" ,Fore.YELLOW + next_start_time)
                 
             msgZ = "eingetragen bzw. aktualisieren, falls vorhanden"
             if MODE:
-                msgZ = f"die Eintragung " + get_fore_color("YELLOW") + Style.BRIGHT + "GELÖSCHT" + get_fore_color("RED") + " werden, falls vorhanden"
+                msgZ = f"die Eintragung " + Fore.YELLOW + Style.BRIGHT + "GELÖSCHT" + Fore.RED + " werden, falls vorhanden"
             start_date = next_start_time
             warning(f"Missing option:", "-B YYYY-MM-DD")
-            prompt = (get_fore_color("WHITE") + Style.BRIGHT + f"Soll zu heutigem Datum (" + get_fore_color("YELLOW") + Style.BRIGHT + ask_date + get_fore_color("WHITE") + Style.BRIGHT + f") {msgZ}? [J/n]: ")
+            prompt = (Fore.WHITE + Style.BRIGHT + f"Soll zu heutigem Datum (" + Fore.YELLOW + Style.BRIGHT + ask_date + Fore.WHITE + Style.BRIGHT + f") {msgZ}? [J/n]: ")
             answer = input_with_prefill(prompt, "", "").strip().lower()
             if not answer in ("", "j", "ja", "y", "yes"):
+                show_process_route()
                 sys.exit(1)
             else:
                 print()
     
         if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
             warning(f"Wrong date format: ", start_date , "ERROR")
+            show_process_route()
             sys.exit(1)
             
         if stop_date:
             if not is_valid_ymd(stop_date):
                 warning(f"Wrong date format: ", stop_date , "ERROR")
+                show_process_route()
                 sys.exit(1)
     
         result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
         if HCWR_GLOBALS.DBG_BREAK_POINT:
             info(result)
+        show_process_route()
         sys.exit(0)
     
 # -----------------------------------------------------------------------
@@ -477,7 +505,7 @@ HCWR_GLOBALS.KW_REPORT_FILE = os.path.join(HCWR_GLOBALS.KW_REPORT_DIR, f"{os.get
 
 if HCWR_GLOBALS.args.output_file:
     if not check_directory_exists(os.path.abspath(HCWR_GLOBALS.args.output_file)):
-        print(get_fore_color("RED") + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(HCWR_GLOBALS.args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
+        print(Fore.RED + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(HCWR_GLOBALS.args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
     else:
         HCWR_GLOBALS.KW_REPORT_FILE = os.path.abspath(HCWR_GLOBALS.args.output_file)
 
@@ -500,7 +528,9 @@ if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
     sql = HCWR_GLOBALS.DB_QUERIES.total_per_project_by_week
     params.extend([HCWR_GLOBALS.MONDAY.strftime("%Y-%m-%d"), HCWR_GLOBALS.SUNDAY.strftime("%Y-%m-%d")])
 
-#sql += "GROUP BY p.id, p.key, p.description\nORDER BY p.id DESC;"
+if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+    info(f"Stundenberechnung", "", "Start")
+
 if int(HCWR_GLOBALS.DBG_LEVEL) == 6:
     debug(f"sql = {sql}")
 if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
@@ -522,6 +552,8 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"mapping: {HCWR_GLOBALS.MAPPING}")
     debug(f"rows: {rows}")
 
+HCWR_GLOBALS.PBAR_MAX = len(rows) + 6 + int(HCWR_GLOBALS.args.week)
+HCWR_GLOBALS.PBAR_VAL = 1
 for description, duration in rows:
     if int(HCWR_GLOBALS.DBG_LEVEL) == 3:
         debug(f"description: {description}")
@@ -529,6 +561,8 @@ for description, duration in rows:
         debug(f"--------------------------")
     description = description.rstrip()
     if any(description.startswith(key) for keys in HCWR_GLOBALS.MAPPING.values() for key in keys):
+        progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+        HCWR_GLOBALS.PBAR_VAL += 1
         continue
 
     if duration != None:
@@ -588,8 +622,12 @@ for description, duration in rows:
                         result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": [{"description": f"  {description}", "duration": entry_duration}]})
                     else:
                         result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": {"description": f"  {description}", "duration": entry_duration}})
+                progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+                HCWR_GLOBALS.PBAR_VAL += 1
         else:
             result.append({"description": description, "duration": duration, "uuk": None, "uuk_duration": None})
+            progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+            HCWR_GLOBALS.PBAR_VAL += 1
     else:
         if description == "Auftrag#":
             if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
@@ -605,6 +643,8 @@ for description, duration in rows:
                     debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
                 # uuk & uuk_duration müssen hier None sein, da es eine Oberkategorien ist!
                 result.append({"description": entry_description, "duration": entry_duration, "uuk": None, "uuk_duration": None})
+                progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+                HCWR_GLOBALS.PBAR_VAL += 1
 
         if description == "Auftrag#":
             description = "Leistungserbringung"
@@ -619,6 +659,8 @@ for description, duration in rows:
         }
         sub_duration = 0
         result.append(current_parent)
+        progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+        HCWR_GLOBALS.PBAR_VAL += 1
 
 result.reverse()
 result_old = result
@@ -627,11 +669,10 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
     debug(f"result = \n{result}")
     debug(f"result_old = \n{result_old}")
 
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 mo, di, mi, do, fr, sa, so, kw_total = get_weekday_hours_per_day(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
-if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
-if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
-    debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+
+
 
 wdays = {
     "Mo": Decimal(mo),
@@ -654,9 +695,13 @@ wdayhours = {
 
 # Calculate absences
 abwesenheiten = berechne_abwesenheiten(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+HCWR_GLOBALS.PBAR_VAL += 1
+
 if abwesenheiten["temp"] > 0:
     msg = f"Unter Temp sind noch Zeiten für KW {HCWR_GLOBALS.args.week}/{HCWR_GLOBALS.args.year} nicht einsortiert!"
-    print(get_fore_color("RED") + Style.BRIGHT + "ABBRUCH: "  + Style.RESET_ALL + msg, file=sys.stderr)
+    print(Fore.RED + Style.BRIGHT + "ABBRUCH: "  + Style.RESET_ALL + msg, file=sys.stderr)
+    show_process_route()
     sys.exit(1)
 
 feiertage = float(0)
@@ -678,8 +723,11 @@ abwesend = 0.0
 WORK_HOURS = TOTAL_SUM
 HCWR_GLOBALS.CONTRACT_HOURS = weekhours
 
-#kw_stundenkonto = get_kw_overhours(HCWR_GLOBALS.args.week, conn)
-s, kw_stundenkonto = overhours_main(conn, HCWR_GLOBALS.args.week)
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+HCWR_GLOBALS.PBAR_VAL += 1
+
+#s, kw_stundenkonto = overhours_main(conn, HCWR_GLOBALS.args.week)
+s, kw_stundenkonto = get_kw_overhours(conn, HCWR_GLOBALS.args.week)
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"WORK_HOURS: {WORK_HOURS}")
     debug(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
@@ -689,13 +737,17 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
 #info("zk_minus =", zk_minus, type(zk_minus))
 
 kw_stundenkonto -= float(zk_minus)
-#HCWR_GLOBALS.SIGN, kw_overhours_add = get_kw_overhours_add(wdayhours, "Fr")
-#HCWR_GLOBALS.SIGN, kw_overhours_add, total_wh = get_kw_overhours_add(wdayhours)
-HCWR_GLOBALS.SIGN, kw_overhours_add = hcwrd_main(conn ,HCWR_GLOBALS.args.week, True)
+
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+HCWR_GLOBALS.PBAR_VAL += 1
+
+# get_kw_overhours_add -> ../modules/hcwr_hcwrd_mod.py
+HCWR_GLOBALS.SIGN, kw_overhours_add = get_kw_overhours_add(conn ,HCWR_GLOBALS.args.week, True)
+
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+HCWR_GLOBALS.PBAR_VAL += 1
 
 #info(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
-#info(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
-
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
     debug(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
@@ -724,9 +776,41 @@ kw_should = HCWR_GLOBALS.CONTRACT_HOURS - (abwesend + urlaub + feiertage)
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"kw_should: {kw_should}")
 
+progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
+if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+    print(f"", file=sys.stderr)
+    info(Style.BRIGHT + Fore.WHITE + "Stundenberechnung" + Style.RESET_ALL, "", Style.BRIGHT + Fore.GREEN + "Fertig" + Style.RESET_ALL)
+
 # Erstelle den Ordner, falls er nicht existiert
 if not os.path.exists(HCWR_GLOBALS.KW_REPORT_DIR) and not HCWR_GLOBALS.args.dry_run:
     os.makedirs(HCWR_GLOBALS.KW_REPORT_DIR)
+
+if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
+    info(f" Feiertage: {feiertage}h, Urlaub: {urlaub}h, Krank: {krank}h, Abwesend: {abwesend}h, Überstunden: {kw_overhours_add}h", "", f"Info zu KW {HCWR_GLOBALS.args.week}")
+    info(f" Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, Std KW = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
+    debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+
+if HCWR_GLOBALS.PROC_NAME in "hcoh":
+    info(f"{format_decimal(WORK_HOURS)} von {format_decimal(kw_should)} (Vertrag: {format_decimal(HCWR_GLOBALS.CONTRACT_HOURS)} Feiertage: {format_decimal(feiertage)} Urlaub: {format_decimal(urlaub)} Abwesend: {format_decimal(abwesend)})", "", "Arbeitsstunden")
+    if kw_old_overhours < kw_stundenkonto:
+        IC = Fore.GREEN
+        GL = "Überstunden"
+        IL = Fore.GREEN
+    else:
+        IC = Fore.RED
+        GL = "Minusstunden"
+        IL = Fore.RED
+    if HCWR_GLOBALS.SIGN == "+":
+        SC = Fore.WHITE
+    else:
+        SC = Fore.RED
+    if kw_old_overhours > 0:
+        HO = Fore.YELLOW
+    else:
+        HO = Fore.MAGENTA
+    info(HO + f"  {kw_old_overhours} " + SC + f"{HCWR_GLOBALS.SIGN} {kw_overhours_add}" + Fore.WHITE + f" = " + IC + f"{kw_stundenkonto} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
+    sys.exit(0)
 
 REPORT = generate_report(WORK_HOURS, kw_should, HCWR_GLOBALS.CONTRACT_HOURS, feiertage, urlaub,
                          abwesend, kw_old_overhours, kw_overhours_add, kw_stundenkonto,
@@ -737,3 +821,4 @@ update_config_comments()
 
 # REPORT AUSGEBEN
 handle_output(REPORT)
+show_process_route()

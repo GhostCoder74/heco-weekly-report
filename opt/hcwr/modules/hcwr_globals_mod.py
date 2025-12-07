@@ -47,12 +47,26 @@ class myGlobals:
     # Get Env variables:
     DBG_LEVEL = os.environ.get('DBG_LEVEL')
     DBG_BREAK_POINT = os.environ.get('DBG_BREAK_POINT')
+    DBG_PROCESS_ROUTE = os.environ.get('DBG_PROCESS_ROUTE')
+    DBG_CALL_TREE = []
+    DBG_CALL_COUNT = {}
+    DBG_PROCESS_ROUTE_MODE = 0
     if DBG_BREAK_POINT is None:
         DBG_BREAK_POINT = ""
+    if DBG_PROCESS_ROUTE:
+        DBG_PROCESS_ROUTE_MODE = DBG_PROCESS_ROUTE
+        DBG_PROCESS_ROUTE = []
+        DBG_PROCESS_ROUTE.append("myGlobals")
+
+    if DBG_BREAK_POINT and len(DBG_PROCESS_ROUTE)>0:
+        print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
+        print(f"DBG_PROCESS_ROUTE_MODE = {DBG_PROCESS_ROUTE_MODE}")
     GROUP = os.environ.get('GROUP')
     DATABASE = os.environ.get('DATABASE')
     DECIMAL_POINT = locale.localeconv()['decimal_point']
 
+    # Calling App Name:
+    PROC_NAME = os.path.basename(sys.argv[0])
     # Globale Standardwerte für Host "hq"
     SSH_HOST = "hq"
     SSH_HOSTNAME = "euarne.intevation.de"
@@ -249,6 +263,9 @@ class myGlobals:
     CONTRACT_HOURS = 0
     KW_REPORT_DIR = None
     KW_REPORT_FILE = None
+
+    PBAR_MAX = 100
+    PBAR_VAL = 0
 
 HCWR_GLOBALS = myGlobals()
 

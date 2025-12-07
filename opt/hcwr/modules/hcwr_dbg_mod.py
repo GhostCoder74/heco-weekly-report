@@ -19,16 +19,9 @@ import sys
 import inspect
 import colorama
 from colorama import Fore, Style
+from os.path import basename
 
 from hcwr_globals_mod import HCWR_GLOBALS
-
-def get_function_name():
-    stack = inspect.stack()
-    caller = stack[1]  # Der direkte Aufrufer
-    fname = caller.function
-    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        warning(f"Break Point is active for function:", fname, "Info")
-    return caller.function
 
 def debug(msg):
     """
@@ -47,7 +40,7 @@ def debug(msg):
         stack = inspect.stack()
         caller = stack[1]  # Der direkte Aufrufer
         print(f"Aufgerufen von: Zeile {caller.lineno}, Funktion {caller.function}")
-        print(get_fore_color("YELLOW") + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
+        print(Fore.YELLOW + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
 
 def info(msg_a, msg_b="", type="Info"):
     """
@@ -64,7 +57,7 @@ def info(msg_a, msg_b="", type="Info"):
     Ausgabe:
         Eine farbig formatierte Zeile wird auf stderr ausgegeben.
     """
-    print(get_fore_color("BLUE") + Style.BRIGHT + f"{type}:" + get_fore_color("WHITE") + f" {msg_a}" + get_fore_color("YELLOW") + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
+    print(Fore.BLUE + Style.BRIGHT + f"{type}:" + Fore.WHITE + f" {msg_a}" + Fore.YELLOW + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
 
 def warning(msg_a, msg_b, type="Warning"):
     """
@@ -81,45 +74,176 @@ def warning(msg_a, msg_b, type="Warning"):
     Ausgabe:
         Eine farbig formatierte Zeile wird auf stderr ausgegeben.
     """
-    print(get_fore_color("RED") + Style.BRIGHT + f"{type}:" + get_fore_color("YELLOW") + f" {msg_a}" + get_fore_color("RED") + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
+    print(Fore.RED + Style.BRIGHT + f"{type}:" + Fore.YELLOW + f" {msg_a}" + Fore.RED + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
 
 # For colorized output
 colorama.init(autoreset=True)
 # Definition of colors
-def get_fore_color(color):
-    """
-    Returns the color code for text foreground in the console based on the
-    given color name.
 
-    :param color: A string representing the color name.
-    Available color names are:
-                 - "RED" (default for error messages)
-                 - "MAGENTA"
-                 - "GREEN"
-                 - "YELLOW" (default for debug messages)
-                 - "BLUE"
-                 - "WHITE" (default for info messages)
+def get_function_name():
+    stack = inspect.stack()
+    caller = stack[1]  # Der direkte Aufrufer
+    fname = caller.function
+    ffile = basename(caller.filename)
+    fline = caller.lineno
+    
+    if "<module>" in fname:
+        fname = ffile
 
-    :return: The color code for the specified color, or Fore.RESET if the color
-             name is not recognized.
-    """
-    colors = {
-        "RED": Fore.RED,        # Default für Error
-        "MAGENTA": Fore.MAGENTA,
-        "GREEN": Fore.GREEN,
-        "YELLOW": Fore.YELLOW,  # Default für Debug
-        "BLUE": Fore.BLUE,
-        "WHITE": Fore.WHITE,    # Default für Info
-        # Weitere Farben hier hinzufügen, falls gewünscht
-    }
-    return colors.get(color, Fore.RESET)
+    # aktuelle Funktions-Tiefe exakt bestimmen
+    depth = len(stack) - 2   # -2 da dieser Wrapper selbst + der Aufruf drin ist
+    depth = max(depth, 0)
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        warning(f"Break Point is active for function:", fname, "Info")
+    if len(HCWR_GLOBALS.DBG_PROCESS_ROUTE)>0:
+        HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(f"{fname} [{ffile}:{fline}]")
+         # --- Aufrufzähler ---
+        HCWR_GLOBALS.DBG_CALL_COUNT[f"{fname} [{ffile}:{fline}]"] = HCWR_GLOBALS.DBG_CALL_COUNT.get(f"{fname} [{ffile}:{fline}]", 0) + 1
+        # speichern für Call-Tree
+        HCWR_GLOBALS.DBG_CALL_TREE.append((depth, f"{fname} [{ffile}:{fline}]"))
+        #print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
+    return caller.function
+
+def show_process_route():
+    if HCWR_GLOBALS.DBG_PROCESS_ROUTE:
+        debug(f"HCWR_GLOBALS.DBG_PROCESS_ROUTE_MODE = {HCWR_GLOBALS.DBG_PROCESS_ROUTE_MODE}")
+        match int(HCWR_GLOBALS.DBG_PROCESS_ROUTE_MODE):
+            case 1:
+                show_process_route_as_list()
+            case 2:
+                show_process_route_as_log_pipe()
+            case 3:
+                show_process_route_as_diagramm()
+            case 4:
+                show_process_route_as_tree()
+            case 5:
+                show_process_route_as_counted_tree()
+            case _:
+                warning("Wrong DBG_PROCESS_ROUTE_MODE ist set:", HCWR_GLOBALS.DBG_PROCESS_ROUTE_MODE)
+                sys.exit(1)
+
+def show_process_route_as_list():
+    steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE
+    print("\n=== PROCESS ROUTE ===", file=sys.stderr)
+    for idx, step in enumerate(steps, 1):
+        if ":" in step and " " in step:
+            colored = Fore.BLUE + Style.BRIGHT + step.split(" ")[0] + Style.RESET_ALL
+            colored += " FILE:" + Fore.YELLOW + step.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            colored += ":" + Fore.WHITE + step.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            colored = Fore.BLUE + Style.BRIGHT + step + Style.RESET_ALL
+        print(f"{idx:02d}. {colored}", file=sys.stderr)
+    print("=====================\n", file=sys.stderr)
+
+def show_process_route_as_log_pipe():
+    steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE
+    new_steps = []
+    for idx, step in enumerate(steps, 1):
+        if ":" in step and " " in step:
+            colored = Fore.BLUE + Style.BRIGHT + step.split(" ")[0] + Style.RESET_ALL
+            colored += " FILE:" + Fore.YELLOW + step.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            colored += ":" + Fore.WHITE + step.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            colored = Fore.BLUE + Style.BRIGHT + step + Style.RESET_ALL
+        new_steps.append(colored)
+        
+    print("\n=== PROCESS PIPELINE ===", file=sys.stderr)
+    print(" --> ".join(new_steps), file=sys.stderr)
+    print("========================\n", file=sys.stderr)
+
+def show_process_route_as_diagramm():
+    steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE
+    print("\n=== PROCESS FLOWCHART ===", file=sys.stderr)
+    for i, step in enumerate(steps):
+        if ":" in step and " " in step:
+            colored = Fore.BLUE + Style.BRIGHT + step.split(" ")[0] + Style.RESET_ALL
+            colored += " FILE:" + Fore.YELLOW + step.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            colored += ":" + Fore.WHITE + step.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            colored = Fore.BLUE + Style.BRIGHT + step + Style.RESET_ALL
+        if i == len(steps) - 1:
+            print(f"└── {colored}", file=sys.stderr)
+        else:
+            print(f"├── {colored}", file=sys.stderr)
+    print("==========================\n", file=sys.stderr)
+
+def show_process_route_as_tree():
+    print(Fore.CYAN + "\nPROCESS CALL TREE" + Style.RESET_ALL, file=sys.stderr)
+    print(Fore.CYAN + "──────────────────────────────────────────\n" + Style.RESET_ALL, file=sys.stderr)
+    tree = HCWR_GLOBALS.DBG_CALL_TREE
+    for i, (depth, name) in enumerate(tree):
+        # Baumzeichen
+        is_last = (i == len(tree) - 1 or tree[i+1][0] < depth)
+        prefix = ("│   " * (depth - 1) + 
+                  ("└── " if is_last else "├── ") if depth > 0 else "")
+        # Farbe für Funktionsnamen
+        if ":" in name and " " in name:
+            colored = Fore.BLUE + Style.BRIGHT + name.split(" ")[0] + Style.RESET_ALL
+            colored += " FILE:" + Fore.YELLOW + name.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            colored += ":" + Fore.WHITE + name.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            colored = Fore.BLUE + Style.BRIGHT + name + Style.RESET_ALL
+        print(prefix + colored, file=sys.stderr)
+    print(Fore.CYAN + "\n──────────────────────────────────────────\n" + Style.RESET_ALL, file=sys.stderr)
+
+def compress_call_tree(raw):
+    if not raw:
+        return []
+    compressed = []
+    last_depth, last_name = raw[0]
+    count = 1
+    for depth, name in raw[1:]:
+        if name == last_name and depth == last_depth:
+            count += 1
+        else:
+            compressed.append((last_depth, last_name, count))
+            last_depth, last_name, count = depth, name, 1
+    compressed.append((last_depth, last_name, count))
+    return compressed
+
+def show_process_route_as_counted_tree():
+    print(Fore.CYAN + "\nPROCESS CALL TREE" + Style.RESET_ALL, file=sys.stderr)
+    print(Fore.CYAN + "──────────────────────────────────────────\n" + Style.RESET_ALL, file=sys.stderr)
+    raw = HCWR_GLOBALS.DBG_CALL_TREE
+    tree = compress_call_tree(raw)
+    for i, (depth, name, count) in enumerate(tree):
+        is_last = (
+            i == len(tree) - 1 or 
+            tree[i+1][0] < depth
+        )
+        prefix = ""
+        if depth > 0:
+            prefix = ("│   " * (depth - 1)) + ("└── " if is_last else "├── ")
+        # Funktionsname farbig
+        if ":" in name and " " in name:
+            fname_colored = Fore.BLUE + Style.BRIGHT + name.split(" ")[0] + Style.RESET_ALL
+            fname_colored += " FILE:" + Fore.YELLOW + name.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            fname_colored += ":" + Fore.WHITE + name.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            fname_colored = Fore.BLUE + Style.BRIGHT + name + Style.RESET_ALL
+        # Aufrufzähler
+        if count > 1:
+            fname_colored += Fore.GREEN + f"  (x{count})" + Style.RESET_ALL
+        print(prefix + fname_colored, file=sys.stderr)
+    print(Fore.CYAN + "\n──────────────────────────────────────────\n" + Style.RESET_ALL)
+    # OPTIONAL: Gesamte Aufrufstatistik
+    print(Fore.MAGENTA + "\nFUNCTION CALL SUMMARY" + Style.RESET_ALL, file=sys.stderr)
+    for k, v in HCWR_GLOBALS.DBG_CALL_COUNT.items():
+        if " " in k and ":" in k:
+            new_k = Fore.BLUE + Style.BRIGHT + k.split(" ")[0] + Style.RESET_ALL
+            new_k += " FILE:" + Fore.YELLOW + k.split(" ")[1].split(":")[0] + Style.RESET_ALL
+            new_k += ":" + Fore.WHITE + k.split(" ")[1].split(":")[1] + Style.RESET_ALL
+        else:
+            new_k.BLUE + Style.BRIGHT + k.RESET_ALL
+        print("  " + new_k + ": " + Fore.GREEN + str(v) + " Aufrufe" + Style.RESET_ALL, file=sys.stderr)
 
 def debug_sql(sql: str, params):
     """
     Ersetzt SQL-Platzhalter (?, %s) durch die echten Werte aus params
     und gibt einen fertigen SQL-String zurück, z.B. für sqlite3 tests.
     """
-
+    fname = get_function_name()
     def quote(v):
         if v is None:
             return "NULL"

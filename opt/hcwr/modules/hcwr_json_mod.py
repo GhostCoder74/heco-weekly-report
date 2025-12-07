@@ -19,12 +19,14 @@ import json
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_fore_color, get_function_name
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
 
 def to_json(data, stdout=True):
+    fname = get_function_name()
     return output(data, True, stdout)
 
 def output(data, use_json=False, stdout=True):
+    fname = get_function_name()
     if use_json:
         if stdout:
             print(json.dumps(data, indent=2, ensure_ascii=False))
