@@ -27,7 +27,7 @@ import inspect
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, debug_sql
 from hcwr_utils_mod import  input_with_prefill
 
 def update_config_comments():
@@ -656,10 +656,12 @@ def get_weekday_hours_per_day(conn, year, week):
 
     sql = HCWR_GLOBALS.DB_QUERIES.wdayhours_sql + HCWR_GLOBALS.DB_QUERIES.wdayhours_sql_excl
     #sql = HCWR_GLOBALS.DB_QUERIES.whours_sql + HCWR_GLOBALS.DB_QUERIES.wdayhours_sql_excl
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"sql = {debug_sql(sql, [week, year, week, year])}")
 
     cursor = conn.cursor()
     if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
-        cursor.execute(sql, [week, week])
+        cursor.execute(sql, [week, year, week, year])
     else:
         cursor.execute(sql, [year, week, year, week])
     row = cursor.fetchone()

@@ -58,9 +58,10 @@ class myGlobals:
         DBG_PROCESS_ROUTE = []
         DBG_PROCESS_ROUTE.append("myGlobals")
 
-    if DBG_BREAK_POINT and len(DBG_PROCESS_ROUTE)>0:
-        print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
-        print(f"DBG_PROCESS_ROUTE_MODE = {DBG_PROCESS_ROUTE_MODE}")
+    if DBG_BREAK_POINT and DBG_PROCESS_ROUTE:
+        if len(DBG_PROCESS_ROUTE)>0:
+            print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
+            print(f"DBG_PROCESS_ROUTE_MODE = {DBG_PROCESS_ROUTE_MODE}")
     GROUP = os.environ.get('GROUP')
     DATABASE = os.environ.get('DATABASE')
     DECIMAL_POINT = locale.localeconv()['decimal_point']

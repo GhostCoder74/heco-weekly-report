@@ -21,6 +21,9 @@ import subprocess
 import re
 import os
 import sys
+from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date, timedelta
 import colorama
 from colorama import Fore, Style
@@ -337,7 +340,9 @@ def auto_migration():
     if os.path.exists(HCWR_GLOBALS.DB_KEYWORD_ID_PATH):
         try:
             success = False
-            conn = HCWR_GLOBALS.DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
+            DBMS = importlib.import_module('sqlite3')
+            DB_QUERIES = importlib.import_module('hcwr_sqlite_queries_sql')
+            conn = DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
             cursor = conn.cursor()
             # Prüfen ob Spalte 'category' existiert
             cursor.execute("PRAGMA table_info(contracts);")
@@ -456,19 +461,25 @@ def get_UK_and_UUK(conn, base_sql, category, params):
     fname = get_function_name()
 
     pid = HCWR_GLOBALS.PROJECTS_ID_MAP[category.strip()]
+    pnew = []
+    for p in params:
+        pnew.append(p)
+    pnew.append(str(pid))
+        
     if int(HCWR_GLOBALS.DBG_LEVEL) == 6:
         debug(f"pid = {pid}")
-    sql_query = base_sql.replace(
-            "SELECT",
-            "SELECT e.start_time AS entry_start_time, e.id AS entry_id, e.description AS entry,"
-            )
+    sql_query = HCWR_GLOBALS.DB_QUERIES.tppbw_uuk
+    #sql_query = base_sql.replace(
+    #        "SELECT",
+    #        "SELECT e.start_time AS entry_start_time, e.id AS entry_id, e.description AS entry,"
+    #        )
 
-    sql_query = sql_query.replace(
-            "GROUP BY p.id, p.key, p.description",
-            f"WHERE p.id = {str(pid)} GROUP BY p.id, p.key, p.description, e.description"
-            )
+    #sql_query = sql_query.replace(
+    #        "GROUP BY p.id, p.key, p.description",
+    #        f"WHERE p.id = {str(pid)} GROUP BY p.id, p.key, p.description, e.description"
+    #        )
     cursor = conn.cursor()
-    cursor.execute(sql_query, params)
+    cursor.execute(sql_query, pnew)
     result_rows = cursor.fetchall()
     if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
         debug(f"sql_query = {sql_query}\nresult_rows for [{category.strip()}] = {result_rows}")
@@ -570,7 +581,10 @@ def initialize_contracts_db():
 
     os.makedirs(os.path.dirname(HCWR_GLOBALS.DB_KEYWORD_ID_PATH), exist_ok=True)
 
-    conn = HCWR_GLOBALS.DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
+    
+    DBMS = importlib.import_module('sqlite3')
+    DB_QUERIES = importlib.import_module('hcwr_sqlite_queries_sql')
+    conn = DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
     cursor = conn.cursor()
 
     # Tabelle erstellen (mit AUTOINCREMENT)
@@ -597,7 +611,7 @@ def initialize_contracts_db():
     ]
 
     for keyword, contract_id, task in contracts:
-        cursor.execute(HCWR_GLOBALS.DB_QUERIES.contract_insert, (keyword, contract_id, task, keyword, contract_id))
+        cursor.execute(DB_QUERIES.contract_insert, (keyword, contract_id, task, keyword, contract_id))
 
     conn.commit()
     conn.close()
@@ -887,6 +901,10 @@ def berechne_abwesenheiten(conn, year, week):
         desc = desc.strip()
         for key, keywords in HCWR_GLOBALS.MAPPING.items():
             if any(desc.startswith(word) for word in keywords):
+                if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                    info(f"result[{key} += {stunden}]")
+                if HCWR_GLOBALS.CFG.has_option('Database', 'dbms') == "pg":
+                    result[key] = Decimal('0.0')
                 result[key] += stunden
                 break
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:

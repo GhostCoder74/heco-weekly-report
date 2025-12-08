@@ -76,6 +76,23 @@ total_per_project_by_week = """
     ORDER BY p.id DESC;
 """
 
+tppbw_uuk = """
+    SELECT
+        e.start_time AS entry_start_time,
+        e.id AS entry_id,
+        e.description AS entry,
+        REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
+        COALESCE(
+            (julianday(e.stop_time) - julianday(e.start_time)) * 24.0,
+        0) AS total_duration
+    FROM projects p
+    LEFT JOIN entries e 
+        ON e.project_id = p.id
+       AND DATE(e.start_time) BETWEEN ? AND ?
+    WHERE p.id = ?
+    ORDER BY e.start_time;
+"""
+
 whours_sql = """
     SELECT
         SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0) AS KW_Total
@@ -151,7 +168,9 @@ wday_absence = """
 pid_by_description = """
     SELECT id FROM projects WHERE description LIKE ?
 """
-
+hcwrd_select = """
+    SELECT * FROM entries WHERE project_id=? AND start_time BETWEEN ? AND ?
+"""
 entry_update = """
     UPDATE entries SET description = ? WHERE description = ? AND date(start_time BETWEEN ? AND ?;
 """

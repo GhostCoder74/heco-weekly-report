@@ -15,13 +15,14 @@
 # https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit    
 # Header added by https://github.com/GhostCoder74/Set-Project-Headers                         
 # -----------------------------------------------------------------------------------------
+import sys
 import sqlite3
 from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, debug_sql
 from hcwr_json_mod import to_json, output
 from hcwr_utils_mod import format_decimal
 
@@ -190,6 +191,7 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
     else:  # Postgres
         ph = "%s"
 
+    PROJECT_EXPR = "REPLACE(REPLACE(p.description, '├─ ', ''), '└─ ', '')"
     search_raw = HCWR_GLOBALS.args.search
     if search and HCWR_GLOBALS.args.search is None:
         search_raw = search
@@ -212,6 +214,7 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
     # --- SEARCH Filter ---
     search_sum = False
     sum_item_like = []
+
     for item in search_items:
     
         negate = False
@@ -244,9 +247,11 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
             continue
     
         if search_cat:
-            conditions.append(f"project {operator} {ph}")
+            # SELECT-Alias "project" DARF NICHT im WHERE verwendet werden → echte Expression nutzen
+            conditions.append(f"{PROJECT_EXPR} {operator} {ph}")
         else:
             conditions.append(f"e.description {operator} {ph}")
+        
         params.append(sql_value)
 
     # --- DATUM Filter (Woche) ---
@@ -273,6 +278,9 @@ def fetch_and_display_entries(search = None, asListObj = False, stdout = True):
         query = HCWR_GLOBALS.DB_QUERIES.jobtime_entries + "WHERE " + " AND ".join(conditions)
     else:
         query = "SELECT * FROM entries"
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"query = {debug_sql(query, params)}")
 
     if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
         debug(f"query = {query}")

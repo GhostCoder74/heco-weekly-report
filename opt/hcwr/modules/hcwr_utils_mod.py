@@ -33,7 +33,7 @@ from decimal import Decimal, InvalidOperation
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, debug_sql
 
 # Set locale for decimal formatting
 locale.setlocale(locale.LC_ALL, '')
@@ -216,7 +216,9 @@ def has_wday_absence(conn, weekday_num, year, week):
     sql = HCWR_GLOBALS.DB_QUERIES.wday_absence
     cursor = conn.cursor()
     if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
-        cursor.execute(sql, [week, week, weekday_num])
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"sql = {debug_sql(sql, [year, week, year, week, weekday_num])}")
+        cursor.execute(sql, [year, week, year, week, weekday_num])
     else:
         cursor.execute(sql, [year, week, year, week, weekday_num])
     count = cursor.fetchone()[0]

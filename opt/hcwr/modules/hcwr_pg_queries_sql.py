@@ -59,7 +59,13 @@ week_complete = """
 total_per_project = """
     SELECT
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
-        COALESCE(SUM(EXTRACT ('epoch' FROM e.stop_time - e.start_time))) / 3600.0 AS duration
+        COALESCE(
+            SUM(
+                EXTRACT(EPOCH FROM (
+                    e.stop_time::timestamp - e.start_time::timestamp
+                ))
+            ), 0
+        ) / 3600.0 AS total_duration
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
     GROUP BY p.id, p.key, p.description
@@ -69,11 +75,36 @@ total_per_project = """
 total_per_project_by_week = """
     SELECT
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
-        COALESCE(SUM(EXTRACT ('epoch' FROM e.stop_time - e.start_time))) / 3600.0 AS duration
+        COALESCE(
+            SUM(
+                EXTRACT(EPOCH FROM (
+                    e.stop_time::timestamp - e.start_time::timestamp
+                ))
+            ), 0
+        ) / 3600.0 AS total_duration
     FROM projects p
-    LEFT JOIN entries e ON e.project_id = p.id AND date(e.start_time) BETWEEN %s AND %s 
+    LEFT JOIN entries e 
+        ON e.project_id = p.id
+       AND CAST(e.start_time AS DATE) BETWEEN %s AND %s
     GROUP BY p.id, p.key, p.description
     ORDER BY p.id DESC;
+"""
+
+tppbw_uuk = """
+    SELECT
+        e.start_time AS entry_start_time,
+        e.id AS entry_id,
+        e.description AS entry,
+        REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
+        COALESCE(
+            EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
+        , 0) / 3600.0 AS total_duration
+    FROM projects p
+    LEFT JOIN entries e 
+        ON e.project_id = p.id
+       AND CAST(e.start_time AS DATE) BETWEEN %s AND %s
+    WHERE p.id = %s
+    ORDER BY e.start_time;
 """
 
 whours_sql = """
@@ -86,35 +117,47 @@ whours_sql = """
 """
 
 wdayhours_sql = """
-    -- So = 0, Mo = 1, ..., Sa = 6
+    -- So = 0, Mo = 1, ..., Sa = 6  (PostgreSQL: dow = 0..6, Sonntag = 0)
     SELECT
-        SUM(CASE 
-            WHEN EXTRACT(dow FROM e.start_time) = '1' THEN EXTRACT('epoch' from e.stop_time - e.start_time) / 3600.0
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 1 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS Mo,
-        SUM(CASE
-            WHEN EXTRACT(dow FROM e.start_time) = '2' THEN EXTRACT('epoch' from e.stop_time - e.start_time) / 3600.0
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 2 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS Di,
-        SUM(CASE
-            WHEN EXTRACT(dow FROM e.start_time) = '3' THEN EXTRACT('epoch' from e.stop_time - e.start_time) / 3600.0
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 3 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS Mi,
-        SUM(CASE 
-            WHEN EXTRACT(dow FROM e.start_time) = '4' THEN EXTRACT('epoch' from e.stop_time - e.start_time) / 3600.0
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 4 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS Do,
-        SUM(CASE
-            WHEN EXTRACT(dow FROM e.start_time) = '5' THEN EXTRACT('epoch' from e.stop_time - e.start_time) / 3600.0
-            ELSE 0 END) AS Fr
-        SUM(CASE strftime('%w', e.start_time)
-            WHEN '6' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 5 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            ELSE 0 END) AS Fr,
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 6 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS Sa,
-        SUM(CASE strftime('%w', e.start_time)
-            WHEN '0' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+
+        SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
+            WHEN 0 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
             ELSE 0 END) AS So,
-        SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0) AS KW_Total
+
+        SUM(EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0) AS KW_Total
+
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
-        AND (EXTRACT(WEEK FROM e.start_time) = %s OR EXTRACT(WEEK FROM e.stop_time) = %s)
-    WHERE EXTRACT(dow FROM e.start_time) BETWEEN '1' AND '5' 
-    """
+        AND (
+            (EXTRACT(WEEK FROM e.start_time::timestamp) = %s AND EXTRACT(YEAR FROM e.start_time::timestamp) = %s)
+            OR
+            (EXTRACT(WEEK FROM e.stop_time::timestamp) = %s AND EXTRACT(YEAR FROM e.stop_time::timestamp) = %s)
+        )
+    WHERE EXTRACT(DOW FROM e.start_time::timestamp) BETWEEN 0 AND 6
+"""
 
 wdayhours_sql_excl = """
 	AND p.description NOT LIKE '%%Feiertag%%' 
@@ -127,33 +170,60 @@ wdayhours_sql_excl = """
 absence = """
     SELECT
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
-        COALESCE(SUM(EXTRACT('epoch' from e.stop_time - e.start_time))) / 3600.0 AS stunden
+        COALESCE(
+            SUM(
+                EXTRACT(
+                    EPOCH FROM 
+                    (e.stop_time::timestamp - e.start_time::timestamp)
+                )
+            ) / 3600.0,
+            0
+        ) AS stunden
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
-    WHERE EXTRACT(WEEK from e.start_time) = %s OR EXTRACT(WEEK FROM e.stop_time) = %s
-    GROUP BY p.description;
+    WHERE EXTRACT(WEEK FROM e.start_time::timestamp) = %s
+       OR EXTRACT(WEEK FROM e.stop_time::timestamp) = %s
+    GROUP BY p.description
+    ORDER BY p.description;
 """
 
 wday_absence = """
     SELECT
-        COUNT(*) 
+        COUNT(*)
     FROM projects p
-    LEFT JOIN entries e ON e.project_id = p.id
-        AND EXTRACT(WEEK FROM e.start_time) = %s OR EXTRACT(WEEK FROM e.stop_time) = %s
-    WHERE EXTRACT(WEEK FROM e.start_time) = %s
+    LEFT JOIN entries e 
+        ON e.project_id = p.id
+       AND (
+            (TO_CHAR(e.start_time::timestamp, 'IW')::int = %s
+             AND EXTRACT(ISOYEAR FROM e.start_time::timestamp) = %s)
+        OR
+            (TO_CHAR(e.stop_time::timestamp, 'IW')::int = %s
+             AND EXTRACT(ISOYEAR FROM e.stop_time::timestamp) = %s)
+       )
+    WHERE 
+        EXTRACT(ISODOW FROM e.start_time::timestamp) = %s
         AND (
-            p.description LIKE '%%Krank%%' OR
-            p.description LIKE '%%Urlaub%%' OR
-            p.description LIKE '%%Feiertag%%'
+            p.description LIKE '%%Krank%%'
+         OR p.description LIKE '%%Urlaub%%'
+         OR p.description LIKE '%%Feiertag%%'
         );
 """
 
 pid_by_description = """
     SELECT id FROM projects WHERE description LIKE %s
 """
-
+hcwrd_select = """
+    SELECT * 
+    FROM entries 
+    WHERE project_id = %s 
+      AND start_time::timestamp BETWEEN %s AND %s;
+"""
 entry_update = """
     UPDATE entries SET description = %s WHERE description = %s AND date(start_time BETWEEN %s AND %s;
+"""
+
+check_db_key_structure = """
+    SELECT key FROM projects where (description LIKE '├─%' or description like '└─%' or key LIKE '3%') and not (description LIKE '  %' or description like '  %');
 """
 
 insert_contract = """
@@ -188,7 +258,6 @@ create_contracts_tbl = """
         task text
     );
 """
-
 
 entry_update = """
     UPDATE entries SET description = %s WHERE description = %s AND date(start_time BETWEEN %s AND %s;

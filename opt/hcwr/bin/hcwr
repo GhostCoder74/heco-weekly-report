@@ -267,6 +267,10 @@ if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
 
 if os.path.exists(HCWR_GLOBALS.CFG_FILE):
     get_config("read_config")
+    if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
+        HCWR_GLOBALS.DBMS = importlib.import_module('psycopg')
+        HCWR_GLOBALS.DB_QUERIES = importlib.import_module('hcwr_pg_queries_sql')
+
     if not auto_migration() and HCWR_GLOBALS.args.init_heco is None:
         show_process_route()
         sys.exit(1)
@@ -279,10 +283,6 @@ else:
     else:
         get_config("no_config")
 importlib.invalidate_caches()
-
-if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
-    HCWR_GLOBALS.DBMS = importlib.import_module('psycopg')
-    HCWR_GLOBALS.DB_QUERIES = importlib.import_module('pg_queries')
 
 initialize_contracts_db()
 
@@ -770,7 +770,7 @@ else:
 
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
     debug(f"kw_old_overhours: {kw_old_overhours}")
-abwesend += krank
+abwesend += float(krank)
 
 kw_should = HCWR_GLOBALS.CONTRACT_HOURS - (abwesend + urlaub + feiertage)
 if int(HCWR_GLOBALS.DBG_LEVEL) == -100:

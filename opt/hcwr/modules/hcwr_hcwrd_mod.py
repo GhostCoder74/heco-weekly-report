@@ -61,7 +61,7 @@ def get_total_time(project_id, date_str, cursor):
     date = datetime.strptime(date_str, "%Y-%m-%d")
 
     # Alle Einträge aus der Tabelle entries mit passender project_id und Datum auswählen
-    cursor.execute("SELECT * FROM entries WHERE project_id=? AND start_time BETWEEN ? AND ?", 
+    cursor.execute(HCWR_GLOBALS.DB_QUERIES.hcwrd_select, 
                    (project_id, date, date + timedelta(days=1)))
 
     # Ergebnis abrufen

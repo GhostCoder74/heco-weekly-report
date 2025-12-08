@@ -94,8 +94,9 @@ def get_function_name():
     depth = len(stack) - 2   # -2 da dieser Wrapper selbst + der Aufruf drin ist
     depth = max(depth, 0)
 
-    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        warning(f"Break Point is active for function:", fname, "Info")
+    fn = HCWR_GLOBALS.DBG_BREAK_POINT
+    if fn and fname in "hcwr hcoh":
+        warning(f"Break Point is active for function:", fn, "Info")
     if HCWR_GLOBALS.DBG_PROCESS_ROUTE:
         if len(HCWR_GLOBALS.DBG_PROCESS_ROUTE)>0:
             HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(f"{fname} [{ffile}:{fline}]")
