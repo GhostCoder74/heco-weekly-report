@@ -297,10 +297,12 @@ contract_exists = """
     SELECT 1 FROM contracts WHERE keyword = %s AND contract_id = %s
 """
 
-jobtime_entries = """
+# SQL-Ausdruck zur Bereinigung der Projektnamen (für SELECT + WHERE)
+PROJECT_EXPR = "REPLACE(REPLACE(p.description, '├─ ', ''), '└─ ', '')"
+jobtime_entries = f"""
     SELECT
         e.id AS id,
-        REPLACE(REPLACE(p.description, '├─ ', ''), '└─ ', '') AS project,
+        {PROJECT_EXPR} AS project,
         e.start_time AS start_time,
         e.stop_time AS stop_time,
         e.description AS description

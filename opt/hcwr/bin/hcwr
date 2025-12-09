@@ -208,7 +208,7 @@ elif MODULE_DIR not in sys.path:
         from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_utils_mod")
-        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms, progress_bar
+        from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms, progress_bar, diff_calendar_weeks
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_wfout_mod")
         from hcwr_wfout_mod import generate_report, handle_output
@@ -552,7 +552,14 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"mapping: {HCWR_GLOBALS.MAPPING}")
     debug(f"rows: {rows}")
 
-HCWR_GLOBALS.PBAR_MAX = len(rows) + 6 + int(HCWR_GLOBALS.args.week)
+PBAR_WEEKS = diff_calendar_weeks(HCWR_GLOBALS.CFG.get('Onboarding', 'firstday'), HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
+#info(f"PBAR_WEEKS = {PBAR_WEEKS}")
+#sys.exit(0)
+if int(PBAR_WEEKS) < int(HCWR_GLOBALS.args.week):
+    WF = int(PBAR_WEEKS)
+else:
+    WF = int(HCWR_GLOBALS.args.week)
+HCWR_GLOBALS.PBAR_MAX = len(rows) + 6 + WF
 HCWR_GLOBALS.PBAR_VAL = 1
 for description, duration in rows:
     if int(HCWR_GLOBALS.DBG_LEVEL) == 3:

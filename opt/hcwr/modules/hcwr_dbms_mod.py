@@ -666,6 +666,11 @@ def get_contract_id(entry, db_path=None):
     if HCWR_GLOBALS.CFG.has_option("Database", "keyword_place"):
         keyword_place = HCWR_GLOBALS.CFG.get("Database", "keyword_place")
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\nkeyword_place  = {keyword_place }")
+        info(f"entry_lower = {entry_lower}")
+        info(f"rows = {rows}")
+
     if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
         debug(f"keyword_place = {keyword_place}")
 
@@ -707,37 +712,56 @@ def get_contract_id(entry, db_path=None):
     for keyword, contract_id, task in rows:
         # Wortgrenzen-Match, case-insensitive
         pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
-        if not re.search(pattern, entry_lower):
+        r = re.search(pattern, entry_lower)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"pattern = {pattern}")
+            info(f"r = {r}")
+            info(f"r = {r}")
+            if r:
+                info(f"r.span = {r.span()}")
+                info(f"r.start = {r.start()}")
+                info(f"r.end = {r.end()}")
+
+        if not r:
             continue
 
-        if not pos_match(keyword):
+        p = pos_match(keyword)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"p = {p}")
+
+        if not p:
             # Keyword gefunden, aber nicht an geforderter Position
-            if int(HCWR_GLOBALS.DBG_LEVEL) >= 2:
-                debug(f"Keyword [{keyword}] gefunden, aber nicht an definierter Stelle laut config.")
+            info(f"Keyword [ " + 
+            Fore.GREEN + 
+            keyword + 
+            Fore.WHITE + 
+            " ] gefunden, aber nicht an definierter Stelle ( " + 
+            Fore.YELLOW + keyword_place + Fore.WHITE +
+            " ) laut config.")
             continue
 
         found.append({'contract_id': contract_id, 'keyword': keyword, 'task': task})
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(f"{fname}:\nfound = {found}")
-        show_process_route()
-        sys.exit(0)
+        info(f"found = {found}")
 
-    # Verhalten je nach keyword_place
-    # FALL A: "*" / "any" / None  -> bei mehreren: frage Benutzer
+    # FALL A: "*" / "any" / None  -> mehrere Treffer → Benutzer auswählen
     if not keyword_place or keyword_place.lower() in ("*", "any"):
         debug(f"FALL A found = {found}")
-        m = re.search(keyword_place, entry)
-        debug(f"FALL A m.group = {m.group}")
+    
+        # WICHTIG: kein Regex bei None/"any" verwenden!
         if len(found) == 0:
             return None
+    
         if len(found) == 1:
             return found[0]
+    
         # mehrere -> Benutzer wählen lassen
         warning(f"  {entry}", " <- Mehrdeutiger Eintrag – mehrere Keywords gefunden")
         print("Folgende Keywords wurden gefunden:")
         for idx, f in enumerate(found, 1):
             print(f"[{idx}] contract_id: {f['contract_id']} | keyword: '{f['keyword']}' | task: {f['task']}")
+    
         prompt = f"Welche ID soll verwendet werden für '{entry}'? [1-{len(found)}]: "
         while True:
             try:
@@ -750,6 +774,11 @@ def get_contract_id(entry, db_path=None):
             print(f"Ungültige Eingabe. Bitte Zahl zwischen 1 und {len(found)} eingeben.")
 
     # FALL B/C/D: ^, $, eigener REGEX -> erster gültiger Treffer, keine Nachfrage
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"found = {found}")
+        show_process_route()
+        sys.exit(0)
+
     if found:
         debug(f"found = {found}")
         m = re.search(keyword_place, entry)

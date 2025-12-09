@@ -39,6 +39,8 @@ def debug(msg):
     if int(HCWR_GLOBALS.DBG_LEVEL) != 0:
         stack = inspect.stack()
         caller = stack[1]  # Der direkte Aufrufer
+        if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+            sys.stderr.write("\r" + " "*80 + "\r")
         print(f"Aufgerufen von: Zeile {caller.lineno}, Funktion {caller.function}")
         print(Fore.YELLOW + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
 
@@ -57,6 +59,8 @@ def info(msg_a, msg_b="", type="Info"):
     Ausgabe:
         Eine farbig formatierte Zeile wird auf stderr ausgegeben.
     """
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print(Fore.BLUE + Style.BRIGHT + f"{type}:" + Fore.WHITE + f" {msg_a}" + Fore.YELLOW + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
 
 def warning(msg_a, msg_b, type="Warning"):
@@ -74,6 +78,8 @@ def warning(msg_a, msg_b, type="Warning"):
     Ausgabe:
         Eine farbig formatierte Zeile wird auf stderr ausgegeben.
     """
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print(Fore.RED + Style.BRIGHT + f"{type}:" + Fore.YELLOW + f" {msg_a}" + Fore.RED + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
 
 # For colorized output
@@ -127,6 +133,8 @@ def show_process_route():
 
 def show_process_route_as_list():
     steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print("\n=== PROCESS ROUTE ===", file=sys.stderr)
     for idx, step in enumerate(steps, 1):
         if ":" in step and " " in step:
@@ -150,12 +158,16 @@ def show_process_route_as_log_pipe():
             colored = Fore.BLUE + Style.BRIGHT + step + Style.RESET_ALL
         new_steps.append(colored)
         
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print("\n=== PROCESS PIPELINE ===", file=sys.stderr)
     print(" --> ".join(new_steps), file=sys.stderr)
     print("========================\n", file=sys.stderr)
 
 def show_process_route_as_diagramm():
     steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print("\n=== PROCESS FLOWCHART ===", file=sys.stderr)
     for i, step in enumerate(steps):
         if ":" in step and " " in step:
@@ -171,6 +183,8 @@ def show_process_route_as_diagramm():
     print("==========================\n", file=sys.stderr)
 
 def show_process_route_as_tree():
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print(Fore.CYAN + "\nPROCESS CALL TREE" + Style.RESET_ALL, file=sys.stderr)
     print(Fore.CYAN + "──────────────────────────────────────────\n" + Style.RESET_ALL, file=sys.stderr)
     tree = HCWR_GLOBALS.DBG_CALL_TREE
@@ -205,6 +219,8 @@ def compress_call_tree(raw):
     return compressed
 
 def show_process_route_as_counted_tree():
+    if HCWR_GLOBALS.PBAR_VAL > 1 and HCWR_GLOBALS.PBAR_VAL != HCWR_GLOBALS.PBAR_MAX:
+        sys.stderr.write("\r" + " "*80 + "\r")
     print(Fore.CYAN + "\nPROCESS CALL TREE" + Style.RESET_ALL, file=sys.stderr)
     print(Fore.CYAN + "──────────────────────────────────────────\n" + Style.RESET_ALL, file=sys.stderr)
     raw = HCWR_GLOBALS.DBG_CALL_TREE

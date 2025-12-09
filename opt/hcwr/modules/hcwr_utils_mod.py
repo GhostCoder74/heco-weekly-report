@@ -26,7 +26,6 @@ import time
 import itertools
 from colorama import init, Fore, Style
 init()
-
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from decimal import Decimal, InvalidOperation
@@ -229,7 +228,6 @@ def has_wday_absence(conn, weekday_num, year, week):
 
     return count > 0
 
-
 def get_wday_diff(conn, wdays, year, week):
     """Collect and print weekday deviations only if there are any."""
     fname = get_function_name()
@@ -293,7 +291,6 @@ def chgrp(path, group_name):
     except Exception as e:
         print("Fehler:", e)
 
-
 def progress_bar(pos, maxval, msg=""):
     """
     Zeichnet eine farbige Progressbar mit animiertem Spinner.
@@ -344,3 +341,35 @@ def progress_bar(pos, maxval, msg=""):
     sys.stdout.write(out)
     sys.stdout.flush()
         
+def diff_calendar_weeks(date_str: str, target_year: int, target_week: int) -> int:
+    """
+    Berechnet die Differenz (in Kalenderwochen) zwischen einem Datum
+    und einer Ziel-Kalenderwoche (ISO-Week).
+    
+    date_str:  'YYYY-MM-DD'
+    target_year: int (z.B. 2025)
+    target_week: int (z.B. 47)
+    
+    Rückgabe: Anzahl der Wochen (positiv/negativ)
+    """
+    fname = get_function_name()
+    # Datum einlesen
+    d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    year, week, _ = d.isocalendar()
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\ndate_str = {date_str}, target_year = {target_year}, target_week = {target_week}")
+        info(f"year = {year},  week = {week}")
+    # ISO-Kalender kennt 52 oder 53 Wochen → in ein "absolutes Wochenindex" umsetzen
+    def absolute_week_index(y, w):
+        # ISO-Kalender: Woche 1 beginnt Montag der Woche mit dem 4. Januar
+        return y * 53 + w  # 53 reicht als maximaler Wochenwert (ISO hat max. 53)
+
+    current_index = absolute_week_index(year, week) 
+    target_index  = absolute_week_index(target_year, target_week)
+
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"current_index = {current_index}, target_index = {target_index}")
+        info(f"result = {(target_index - current_index)}")
+        sys.exit(0)
+    return target_index - current_index
