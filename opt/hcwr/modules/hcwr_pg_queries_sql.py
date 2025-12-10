@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -19,6 +19,13 @@
 # python file for sql query definitions for postgresql
 # LOA: Steht für "Leave of Absence" und wird im Personalwesen für 
 #      eine Beurlaubung oder Freistellung von der Arbeit verwendet.
+
+###################################################################
+#
+# TODO: [Done] Alles auf Sekunden umstellen
+#
+###################################################################
+
 LOA_exists_sql = """
     SELECT id, description FROM entries
     WHERE id = %s
@@ -65,7 +72,7 @@ total_per_project = """
                     e.stop_time::timestamp - e.start_time::timestamp
                 ))
             ), 0
-        ) / 3600.0 AS total_duration
+        ) AS total_duration
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
     GROUP BY p.id, p.key, p.description
@@ -81,7 +88,7 @@ total_per_project_by_week = """
                     e.stop_time::timestamp - e.start_time::timestamp
                 ))
             ), 0
-        ) / 3600.0 AS total_duration
+        ) AS total_duration
     FROM projects p
     LEFT JOIN entries e 
         ON e.project_id = p.id
@@ -98,7 +105,7 @@ tppbw_uuk = """
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
         COALESCE(
             EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
-        , 0) / 3600.0 AS total_duration
+        , 0) AS total_duration
     FROM projects p
     LEFT JOIN entries e 
         ON e.project_id = p.id
@@ -109,7 +116,7 @@ tppbw_uuk = """
 
 whours_sql = """
     SELECT
-        SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0) AS KW_Total
+        SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time))) AS KW_Total
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
         AND (isoweek(date(e.start_time), %s, %s) OR isoweek(date(e.stop_time), %s, %s))
@@ -120,34 +127,34 @@ wdayhours_sql = """
     -- So = 0, Mo = 1, ..., Sa = 6  (PostgreSQL: dow = 0..6, Sonntag = 0)
     SELECT
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 1 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 1 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Mo,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 2 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 2 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Di,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 3 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 3 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Mi,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 4 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 4 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Do,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 5 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 5 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Fr,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 6 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 6 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS Sa,
 
         SUM(CASE EXTRACT(DOW FROM e.start_time::timestamp)
-            WHEN 0 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0
+            WHEN 0 THEN EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))
             ELSE 0 END) AS So,
 
-        SUM(EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp)) / 3600.0) AS KW_Total
+        SUM(EXTRACT(EPOCH FROM (e.stop_time::timestamp - e.start_time::timestamp))) AS KW_Total
 
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
@@ -176,7 +183,7 @@ absence = """
                     EPOCH FROM 
                     (e.stop_time::timestamp - e.start_time::timestamp)
                 )
-            ) / 3600.0,
+            ),
             0
         ) AS stunden
     FROM projects p

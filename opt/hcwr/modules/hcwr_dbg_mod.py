@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -86,32 +86,48 @@ def warning(msg_a, msg_b, type="Warning"):
 colorama.init(autoreset=True)
 # Definition of colors
 
+def whereami():
+    frame = inspect.currentframe().f_back
+    file = basename(frame.f_code.co_filename)
+    fn = frame.f_code.co_name
+    ln = frame.f_lineno
+    return {'file': file,'line': ln, 'fname': fn}
+
 def get_function_name():
     stack = inspect.stack()
     caller = stack[1]  # Der direkte Aufrufer
-    fname = caller.function
+
     ffile = basename(caller.filename)
     fline = caller.lineno
-    
-    if "<module>" in fname:
-        fname = ffile
+    fname = caller.function
 
-    # aktuelle Funktions-Tiefe exakt bestimmen
-    depth = len(stack) - 2   # -2 da dieser Wrapper selbst + der Aufruf drin ist
-    depth = max(depth, 0)
+    # Falls aus <module> aufgerufen → Dateiname statt "<module>"
+    display_name = ffile if fname == "<module>" else fname
 
+    # aktuelle Tiefe
+    depth = max(len(stack) - 2, 0)
+
+    # Breakpoint
     fn = HCWR_GLOBALS.DBG_BREAK_POINT
-    if fn and fname in "hcwr hcoh":
+    if fn and display_name in ("hcwr", "hcoh"):
         warning(f"Break Point is active for function:", fn, "Info")
+
+    # Prozessroute
     if HCWR_GLOBALS.DBG_PROCESS_ROUTE:
-        if len(HCWR_GLOBALS.DBG_PROCESS_ROUTE)>0:
-            HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(f"{fname} [{ffile}:{fline}]")
-             # --- Aufrufzähler ---
-            HCWR_GLOBALS.DBG_CALL_COUNT[f"{fname} [{ffile}:{fline}]"] = HCWR_GLOBALS.DBG_CALL_COUNT.get(f"{fname} [{ffile}:{fline}]", 0) + 1
-            # speichern für Call-Tree
-            HCWR_GLOBALS.DBG_CALL_TREE.append((depth, f"{fname} [{ffile}:{fline}]"))
-            #print(f"DBG_PROCESS_ROUTE = {DBG_PROCESS_ROUTE}")
-    return caller.function
+        entry = f"{display_name} [{ffile}:{fline}]"
+        HCWR_GLOBALS.DBG_PROCESS_ROUTE.append(entry)
+
+        # Aufrufzähler
+        HCWR_GLOBALS.DBG_CALL_COUNT[entry] = (
+            HCWR_GLOBALS.DBG_CALL_COUNT.get(entry, 0) + 1
+        )
+
+        # für Call-Tree
+        HCWR_GLOBALS.DBG_CALL_TREE.append((depth, entry))
+
+    # Rückgabe:
+    return display_name
+
 
 def show_process_route():
     if HCWR_GLOBALS.DBG_PROCESS_ROUTE:
@@ -129,7 +145,9 @@ def show_process_route():
                 show_process_route_as_counted_tree()
             case _:
                 warning("Wrong DBG_PROCESS_ROUTE_MODE ist set:", HCWR_GLOBALS.DBG_PROCESS_ROUTE_MODE)
-                sys.exit(1)
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 def show_process_route_as_list():
     steps = HCWR_GLOBALS.DBG_PROCESS_ROUTE

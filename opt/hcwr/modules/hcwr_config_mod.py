@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"
 # Do not remove this header.
@@ -188,10 +188,15 @@ def get_or_create_wdayhours_map():
     weekdays = HCWR_GLOBALS.WEEKDAYS
     updated = False
     for day in weekdays:
+        default_hours = 8.0
         if day not in HCWR_GLOBALS.CFG['Workdays']:
             while True:
-                prompt = (f"Wieviele Stunden arbeiten Sie am {day}? (z. B. 8.0): ")
-                value = input_with_prefill(prompt, str(8.0)).strip()
+                if day in "Sa So":
+                    default_hours = 0.0
+                    value = default_hours
+                else:
+                    prompt = (f"Wieviele Stunden arbeiten Sie am {day}? (z. B. 8.0): ")
+                    value = input_with_prefill(prompt, str(default_hours)).strip()
                 if not value:
                     print("Eingabe darf nicht leer sein.")
                     continue
@@ -673,11 +678,10 @@ def get_weekday_hours_per_day(conn, year, week):
         debug(f"row = {row}")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(tuple(Decimal(val).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if val is not None else Decimal("0.0") for val in row))
+        info(tuple(val if val is not None else 0 for val in row))
         show_process_route()
         sys.exit(0)
 
     # Convert to Decimals and ensure fallback to 0.0 if None
-    return tuple(Decimal(val).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if val is not None else Decimal("0.0") for val in row)
 
-
+    return tuple(val if val is not None else 0 for val in row)

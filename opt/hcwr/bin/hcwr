@@ -255,7 +255,7 @@ if HCWR_GLOBALS.PROC_NAME in "hcoh":
     HCWR_GLOBALS.args.verbose = True
 
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(HCWR_GLOBALS.PROC_NAME, Fore.BLUE + " for " + 
+    info(HCWR_GLOBALS.PROC_NAME, Fore.BLUE + "for " + 
     Fore.WHITE + "W" + str(HCWR_GLOBALS.args.week), Fore.GREEN + "Running as" + Style.RESET_ALL)
 
 if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
@@ -971,9 +971,9 @@ if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
 
 # Sundenkonto : + oder - Stunden?
 if HCWR_GLOBALS.SIGN == "+":
-    kw_old_overhours = (kw_stundenkonto - kw_overhours_add)
+    kw_old_overhours = (kw_stundenkonto - abs(kw_overhours_add))
 else:
-    kw_old_overhours = (kw_stundenkonto + kw_overhours_add)
+    kw_old_overhours = (kw_stundenkonto + abs(kw_overhours_add))
 
 abwesend += krank
 

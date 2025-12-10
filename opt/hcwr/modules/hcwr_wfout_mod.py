@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.3
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -22,7 +22,7 @@ import tempfile
 import subprocess
 import colorama
 from colorama import Fore, Style
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
@@ -30,6 +30,12 @@ from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_r
 from hcwr_utils_mod import format_decimal, get_wday_diff, input_with_prefill, chgrp
 from hcwr_extexec_mod import run_wochenfazit
 from hcwr_tasks_mod import get_my_tasks 
+
+def SecToHours(sec, xtype=","):
+    result = Decimal(sec / 3600).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
+    if xtype == ",":
+       return format_decimal(result)        
+    return result
 
 # Final report output
 def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, abwesend,
@@ -44,19 +50,25 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
     week_str = f"{HCWR_GLOBALS.args.year}-W{HCWR_GLOBALS.args.week:02d}"
     report_lines.append(f"Wochenfazit: {week_str} Name: {myname}\n")
     report_lines.append(
-        f"Arbeitsstunden: {format_decimal(work_hours)} von {format_decimal(kw_should)} "
-        f"(Vertrag: {format_decimal(contract_hours)}  Feiertage: {format_decimal(feiertage)}  "
-        f"Urlaub: {format_decimal(urlaub)}  abwesend: {format_decimal(abwesend)})"
+        f"Arbeitsstunden: {SecToHours(work_hours)} von {SecToHours(kw_should)} "
+        f"(Vertrag: {contract_hours}  Feiertage: {SecToHours(feiertage)}  "
+        f"Urlaub: {SecToHours(urlaub)}  abwesend: {SecToHours(abwesend)})"
     )
-    #TODO: Vorzeichen BUG beheben
-    kw_overhours_add_abs = abs(round(kw_overhours_add, 2))
-
-    if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-        debug(f"sign = {HCWR_GLOBALS.SIGN}")
-        debug(f"kw_overhours_add = {format_decimal(kw_overhours_add)}")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"sign = {HCWR_GLOBALS.SIGN}")
+        info(f"kw_overhours_add = {SecToHours(kw_overhours_add)}")
+        info(f"kw_old_overhours = {SecToHours(kw_old_overhours)}")
+        info(f"kwADD = {SecToHours(kw_overhours_add)}")
+    kwOLD = SecToHours(kw_old_overhours)
+    kwADD = SecToHours(kw_overhours_add, False)
+    ZK = SecToHours(kw_stundenkonto)
+    if kwADD < 0:
+        sign = "-"
+    else:
+        sign = "+"
     report_lines.append(
-        f"Stundenkonto: {format_decimal(kw_old_overhours)} {HCWR_GLOBALS.SIGN} {format_decimal(abs(kw_overhours_add_abs))} "
-        f"= {format_decimal(kw_stundenkonto)}"
+        f"Stundenkonto: {kwOLD} {sign} {abs(kwADD)} "
+        f"= {ZK}"
     )
 
     # Tagabweichungen hinzufügen (erst jetzt!)
@@ -81,7 +93,7 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
 
         # Workload breakdown
         report_lines.append("Stundenaufteilung:")
-        percent_part = Decimal(0.0) if work_hours == 0 else Decimal(100) / Decimal(work_hours)
+        percent_part = Decimal(0.0) if work_hours == 0 else Decimal(100) / Decimal(work_hours/3600)
 
         groups = []
         current_group = None
@@ -93,11 +105,11 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
                 debug(f"generate_report: item = {item}")
             is_sub = item['description'].startswith("  ")
 
-            if round(item['duration'], 2) > 0:
+            if SecToHours(item['duration'], False) > 0:
                 if not is_sub:
                     if current_group:
                         groups.append(current_group)
-                    p = round(percent_part * Decimal(round(item['duration'], 2)), 0)
+                    p = round(percent_part * SecToHours(item['duration'], False), 0)
                     current_group = {
                         "percent": p,
                         "parent": item,
@@ -114,13 +126,13 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
         for group in groups:
             p = group["percent"]
             parent = group["parent"]
-            report_lines.append(f"{p}%: {parent['description']}: {format_decimal(round(parent['duration'], 2))}")
+            report_lines.append(f"{p}%: {parent['description']}: {SecToHours(parent['duration'])}")
             for sub in group["subs"]:
                 line = ""
                 if 'task' in sub and sub['task']:
-                    line += f"  {sub['task']} {sub.get('contract_id', '')}: {format_decimal(round(sub['duration'], 2))}"
+                    line += f"  {sub['task']} {sub.get('contract_id', '')}: {SecToHours(sub['duration'])}"
                 else:
-                    line += f"{sub.get('description', '')}: {format_decimal(round(sub['duration'], 2))}"
+                    line += f"{sub.get('description', '')}: {SecToHours(sub['duration'])}"
                 report_lines.append(line)
 
                 if int(HCWR_GLOBALS.DBG_LEVEL) == -99:
@@ -140,10 +152,10 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
                                 desc = uuk_entries['description']
                                 dur = uuk_entries['duration']
                                 if desc and dur is not None:
-                                    report_lines.append(f"{desc}: {format_decimal(round(dur, 2))}")
+                                    report_lines.append(f"{desc}: {SecToHours(dur)}")
 
     if zk_minus > 0:
-        report_lines.append(f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {format_decimal(round(zk_minus, 2))}")
+        report_lines.append(f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {SecToHours(zk_minus)}")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         print("\n".join(report_lines))
         show_process_route()

@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -30,7 +30,7 @@ from colorama import Fore, Style
 
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
-from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, debug_sql
 from hcwr_utils_mod import input_with_prefill
 from hcwr_config_mod import update_config_comments, update_config, get_config
 
@@ -134,9 +134,11 @@ def is_current_week_and_complete(db_path, year, kw):
     conn = HCWR_GLOBALS.DBMS.connect(db_path)
     cursor = conn.cursor()
 
-    # Wochentage Mo–Fr
+    # Wochentage Mo–So
     weekdays = HCWR_GLOBALS.WEEKDAYS
     missing_days = []
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"weekdays = {weekdays}")
 
     #TODO DONE: Auch Sa. & So. fähig machen
     for day_index in range(len(weekdays)):  # Mo.–So.
@@ -144,13 +146,17 @@ def is_current_week_and_complete(db_path, year, kw):
         day_str = day.strftime('%Y-%m-%d')
         next_day_str = (day + timedelta(days=1)).strftime('%Y-%m-%d')
 
-        if int(HCWR_GLOBALS.DBG_LEVEL)==-2:
-            debug (f"HCWR_GLOBALS.DB_QUERIES.week_complete = {HCWR_GLOBALS.DB_QUERIES.week_complete}")
         cursor.execute(
             HCWR_GLOBALS.DB_QUERIES.week_complete,
             (day_str, next_day_str)
         )
         count = cursor.fetchone()[0]
+        hours = HCWR_GLOBALS.WDAYHOURS_MAP.get(weekdays[day_index], 0)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info (f"HCWR_GLOBALS.DB_QUERIES.week_complete = {debug_sql(HCWR_GLOBALS.DB_QUERIES.week_complete,  [day_str, next_day_str])}")
+            info(f"count = {count}, hours = {hours}")
+        if float(hours) == 0:
+            count = 1
         if count == 0:
             missing_days.append(weekdays[day_index])
 
@@ -378,41 +384,43 @@ def merge_results(result):
     merged = {}
 
     # Phase 1: Sammeln und aufsummieren
-    if int(HCWR_GLOBALS.DBG_LEVEL) == -1:
-        debug(f"result = {result}")
-        debug(f"===============================================")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\nresult = {result}")
+        info(f"===============================================")
     for entry in result:
-        if int(HCWR_GLOBALS.DBG_LEVEL) == -1:
-            debug(f"entry = {entry}")
-            debug(f"------------#############################################--------------")
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"entry = {entry}")
+            info(f"------------#############################################--------------")
         desc = entry['description']
-        dur = entry['duration'] or 0.0
+        dur = entry['duration'] or 0
         uuk = entry['uuk']
-        uuk_dur = 0.0
+        uuk_dur = 0
         if uuk == None:
             uuk = []
-        if int(HCWR_GLOBALS.DBG_LEVEL) == -1:
-            debug(f"uuk = {uuk}")
-            debug(f"--------------------------")
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"uuk = {uuk}")
+            info(f"--------------------------")
         for u in uuk:
             if isinstance(u, dict) and u.get('duration') is not None:
-                uuk_dur += float(u['duration'])
+                uuk_dur += u['duration']
 
         if desc not in merged:
             if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
-                merged[desc] = {'duration': 0.0, 'uuk': []}
+                merged[desc] = {'duration': 0, 'uuk': []}
             else:
-                merged[desc] = {'duration': 0.0, 'uuk': None}
+                merged[desc] = {'duration': 0, 'uuk': None}
 
             if 'task' in entry:
                 merged[desc]['task'] = entry['task']
             if 'contract_id' in entry:
                 merged[desc]['contract_id'] = entry['contract_id']
-        merged[desc]['duration'] += float(dur)
+        merged[desc]['duration'] += int(dur)
 
         if uuk:
             merged[desc]['uuk'] = uuk
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"merged = {merged}")
     # Phase 2: Neuaufbau der Ergebnisliste
     final_result = []
     for description in merged:
@@ -466,8 +474,8 @@ def get_UK_and_UUK(conn, base_sql, category, params):
         pnew.append(p)
     pnew.append(str(pid))
         
-    if int(HCWR_GLOBALS.DBG_LEVEL) == 6:
-        debug(f"pid = {pid}")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\npid = {pid}, pnew = {pnew}")
     sql_query = HCWR_GLOBALS.DB_QUERIES.tppbw_uuk
     #sql_query = base_sql.replace(
     #        "SELECT",
@@ -481,8 +489,8 @@ def get_UK_and_UUK(conn, base_sql, category, params):
     cursor = conn.cursor()
     cursor.execute(sql_query, pnew)
     result_rows = cursor.fetchall()
-    if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
-        debug(f"sql_query = {sql_query}\nresult_rows for [{category.strip()}] = {result_rows}")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"sql_query = {debug_sql(sql_query, pnew)}\nresult_rows for [{category.strip()}] = {result_rows}")
     uk_entry = []
     for entry_start_time, entry_id, entry, uuk, duration in result_rows:
         if int(HCWR_GLOBALS.DBG_LEVEL)==-10:
@@ -506,11 +514,14 @@ def get_UK_and_UUK(conn, base_sql, category, params):
             if int(HCWR_GLOBALS.DBG_LEVEL) == -98:
                 debug(f"get_UK_and_UUK [contract] -> contract: {contract}")
             if not m and entry != None:
-                info(f"contract = {contract}, line = {line}")
+                #info(f"contract = {contract}, line = {line}")
                 keyword_place = HCWR_GLOBALS.CFG.get("Database", "keyword_place")
-                warning(f"  {entry}",f" <- Missing contract No# in entry by pattern setting [keyword_place = {keyword_place}]")
-                prompt  = (f"Möchten sie den Eintrag hier nun korrigieren? {entry}? [J/n]: ")
-                answer = input_with_prefill(prompt, "", "")
+                if HCWR_GLOBALS.PROC_NAME in "hcoh":
+                    answer = "n"
+                else:
+                    warning(f"  {entry}",f" <- Missing contract No# in entry by pattern setting [keyword_place = {keyword_place}]")
+                    prompt  = (f"Möchten sie den Eintrag hier nun korrigieren? {entry}? [J/n]: ")
+                    answer = input_with_prefill(prompt, "", "")
                 if answer in ("", "j", "ja", "y", "yes"):
                     entry_new = input_with_prefill("Bearbeiten von : ", entry)
                     info("Changed entry : ", entry_new)
@@ -917,24 +928,27 @@ def berechne_abwesenheiten(conn, year, week):
     fname = get_function_name()
 
     cursor = conn.cursor()
-    result = {key: 0.0 for key in HCWR_GLOBALS.MAPPING}
+    result = {key: 0 for key in HCWR_GLOBALS.MAPPING}
     sql = HCWR_GLOBALS.DB_QUERIES.absence
-    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(f"{fname}:\sql = {sql}")
     if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
-        cursor.execute(sql, [week, week])
+        params = [week, week]
     else:
-        cursor.execute(sql, [year, week, year, week])
+        params = [year, week, year, week]
+
+    cursor.execute(sql, params)
     rows = cursor.fetchall()
-    for desc, stunden in rows:
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\sql = {debug_sql(sql, params)}")
+        info(f"rows = {rows}")
+    for desc, entry_seconds in rows:
         desc = desc.strip()
         for key, keywords in HCWR_GLOBALS.MAPPING.items():
             if any(desc.startswith(word) for word in keywords):
                 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-                    info(f"result[{key} += {stunden}]")
-                if HCWR_GLOBALS.CFG.has_option('Database', 'dbms') == "pg":
-                    result[key] = Decimal('0.0')
-                result[key] += stunden
+                    info(f"result[{key}] += {entry_seconds}")
+                #if HCWR_GLOBALS.CFG.has_option('Database', 'dbms') == "pg":
+                #    result[key] = Decimal('0.0')
+                result[key] += entry_seconds
                 break
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"rows = {rows}")

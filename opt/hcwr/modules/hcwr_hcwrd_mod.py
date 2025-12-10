@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"
 # Do not remove this header.
@@ -26,7 +26,7 @@ import re
 from hcwr_globals_mod import HCWR_GLOBALS
 from hcwr_config_mod import get_calendar_week
 from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
-from hcwr_utils_mod import progress_bar
+from hcwr_utils_mod import progress_bar, input_with_prefill
 
 def validate_date(date_string):
     fname = get_function_name()
@@ -68,14 +68,8 @@ def get_total_time(project_id, date_str, cursor):
     entries = cursor.fetchall()
 
     # Gesamtzeit in Sekunden berechnen
-    total_time = sum((datetime.strptime(entry[3][:19], '%Y-%m-%d %H:%M:%S') - datetime.strptime(entry[2][:19], '%Y-%m-%d %H:%M:%S')).total_seconds() for entry in entries)
+    total_time = int(sum((datetime.strptime(entry[3][:19], '%Y-%m-%d %H:%M:%S') - datetime.strptime(entry[2][:19], '%Y-%m-%d %H:%M:%S')).total_seconds() for entry in entries))
 
-    # Zeit in Stunden, Minuten und Sekunden umwandeln
-    hours, remainder = divmod(total_time, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    # Ausgabe der Gesamtzeit als String im Format "hh:mm:ss"
-    total_time_str = '{:02d}:{:02d}:{:02d}'.format(int(hours), int(minutes), int(seconds))
     return total_time
 
 
@@ -84,21 +78,30 @@ def get_weekly_total_time(project_id, start_date, kw, cursor):
     # Wenn kein Startdatum angegeben ist, setze das Startdatum auf Montag der Kalenderwoche
     if not start_date:
         date = datetime.strptime(kw + "-1", "%Y-%W-%w")
-        #date = datetime.strptime(kw, "%Y-%W-%w")
         start_date = (date - timedelta(days=date.weekday())).strftime("%Y-%m-%d")
     else:
         start_date = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%d")
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\start_date = {start_date}")        
     # Gesamtzeit von Montag bis Sonntag berechnen
     total_time = 0
     for i in range(7):
         day = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i)
         tresult = get_total_time(project_id, day.strftime("%Y-%m-%d"), cursor)
         total_time += tresult
-        debug(f"{day} => tresult: {tresult}")
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"day = {day}")        
+            info(f"Before: total_time = {total_time}")        
+            info(f"{day} => tresult: {tresult}")
+            info(f"After: total_time = {total_time}")        
     
-
-    debug(f"total_time = {total_time}")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"total_time = {total_time}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            sys.exit(0)
 
     return total_time
 
@@ -144,6 +147,8 @@ def get_kw_overhours(conn=None, kw=None):
         info (f"first_kw = {first_kw}")
     for i in range(first_kw, kw + 1):
         result = get_kw_overhours_add(conn, i, None, True, None, None)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info (f"result = {result}")
         for line in result:
             if 'KW Zeitkonto' in line:
                 time_str = line.split()[2]
@@ -158,28 +163,24 @@ def get_kw_overhours(conn=None, kw=None):
     sum_seconds = 0
 
     for t in times:
-        debug (f"t => {t} => t Seconds=> {to_seconds(t)}")
-        if t.startswith('-'):
-            t = t[1:]
-            debug (t)
-            sum_seconds -= to_seconds(t)
-        else:
-            t = t[1:]
-            debug (t)
-            sum_seconds += to_seconds(t)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"t => {t} => t Seconds=> {t}")
+        sum_seconds += int(t)
 
-        debug (f"sum_seconds => {sum_seconds}")
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"sum_seconds => {sum_seconds}")
 
     sign = "+"
-    hours, remainder = divmod(sum_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
     if sum_seconds < 0:
         sign = "-"
-    result = float(Decimal(hours)+Decimal(minutes)/60*int(str(f"{sign}1")))
+    result = (sum_seconds*int(str(f"{sign}1")))
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(f"sign, result = {sign}, {result}")
-        show_process_route()
-        sys.exit(0)
+        info(f"sign = {sign}, result = {result}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+            sys.exit(0)
     return sign, result
 
 def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
@@ -231,60 +232,54 @@ def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
             total_time = get_total_time(project_id, date)
             day_total_time += total_time
 
-        hours, remainder = divmod(total_time, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        if "Zeitkonto Abzug" in project_name:
-            sign = "-"
-        else:
-            sign = ""
-
-        #if total_time >= 3600:
-        #if not t and not zk:
-        #    print(f"{project_name}: {sign}{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
         if not "Zeitkonto Abzug" in project_name:
             total_kw_time += total_time
         if za and "Zeitkonto Abzug" in project_name:
             total_kw_time -= total_time
 
-    weekhours = float(HCWR_GLOBALS.CFG.get('General', 'weekhours')) * 3600
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"total_time = {total_time}")
+        info(f"total_kw_time = {total_kw_time}")
+    weekhours = int(float(HCWR_GLOBALS.CFG.get('General', 'weekhours')) * 3600)
     firstday = HCWR_GLOBALS.CFG.get('Onboarding', 'firstday') 
     if kw:
-        #weekhours = 144000    # 40 Stunden Woche in Sekunden
-        if total_kw_time > weekhours:
-            p = '+'
-            overhours = total_kw_time - weekhours # Ueberstunden in Sekunden
-            whours, wremainder = divmod(overhours, 3600)
-            wminutes, wseconds = divmod(wremainder, 60)
-        else:
+        overhours = total_kw_time - weekhours # Ueberstunden in Sekunden
+        if overhours < 0:
             p = '-'
-            overhours = weekhours - total_kw_time # um Ueberstunden in Sekunden fuer minus Zeiten zu erhalten
-            whours, wremainder = divmod(overhours, 3600)
-            wminutes, wseconds = divmod(wremainder, 60)
-
-        hours, remainder = divmod(total_kw_time, 3600)
-        minutes, seconds = divmod(remainder, 60)
-
+        else:
+            p = '+'
         lines = []
         if not t and not zk:    
-            lines.append(f"KW {kw}: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
-            lines.append(f"KW Zeitkonto: {p}{int(whours):02d}:{int(wminutes):02d}:{int(wseconds):02d}")
-            return lines
+            lines.append(f"KW {kw}: {int(total_kw_time)}")
+            lines.append(f"KW Zeitkonto: {int(overhours)}")
+            result = lines
         elif t and not zk:
-            lines.append(f"KW {kw}: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
-            return lines
+            lines.append(f"KW {kw}: {int(total_kw_time)}")
+            result = lines
         elif not t and zk:
-            return p, float(Decimal(whours)+Decimal(wminutes)/60*int(str(f"{p}1")))
-        
+            result = [p, overhours]
+            
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            show_process_route()
-            sys.exit(0)
+            info(f"result = {result}")
+        else:
+            return result
+                
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            prompt = "Enter für fortfahren oder N für Nein "
+            answer = input_with_prefill(prompt, "", '')
+            if answer in ("N", "n"):
+                show_process_route()
+                sys.exit(0)
+            else:
+                return result
     else:
-        hours, remainder = divmod(day_total_time, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        print(f"{date} Total: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+        print(f"{date} Total: {int(total_kw_time)}")
 
     # Datenbankverbindung schließen
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        show_process_route()
-        sys.exit(0)
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+            sys.exit(0)

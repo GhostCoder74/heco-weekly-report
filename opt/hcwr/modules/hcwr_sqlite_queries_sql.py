@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -19,6 +19,13 @@
 # python file for sql query definitions for sqlite
 # LOA: Steht für "Leave of Absence" und wird im Personalwesen für 
 #      eine Beurlaubung oder Freistellung von der Arbeit verwendet.
+
+###################################################################
+#
+# TODO: [Done] Alles auf Sekunden umstellen
+#
+###################################################################
+
 LOA_exists_sql = """
     SELECT id, description FROM entries
     WHERE date(start_time) = date(?)
@@ -65,11 +72,10 @@ total_per_project = """
     GROUP BY p.id, p.key, p.description
     ORDER BY p.id DESC;
 """
-
 total_per_project_by_week = """
     SELECT
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
-        COALESCE(SUM(strftime('%s', e.stop_time) - strftime('%s', e.start_time)), 0) / 3600.0 AS total_duration
+        COALESCE(SUM(strftime('%s', e.stop_time) - strftime('%s', e.start_time)), 0) AS total_duration
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id AND date(e.start_time) BETWEEN ? AND ?
     GROUP BY p.id, p.key, p.description
@@ -83,8 +89,8 @@ tppbw_uuk = """
         e.description AS entry,
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
         COALESCE(
-            (julianday(e.stop_time) - julianday(e.start_time)) * 24.0,
-        0) AS total_duration
+            (julianday(e.stop_time) - julianday(e.start_time)) * 86400,
+        0) AS total_duration_seconds
     FROM projects p
     LEFT JOIN entries e 
         ON e.project_id = p.id
@@ -106,27 +112,27 @@ wdayhours_sql = """
     -- So = 0, Mo = 1, ..., Sa = 6
     SELECT
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '1' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '1' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Mo,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '2' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '2' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Di,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '3' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '3' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Mi,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '4' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '4' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Do,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '5' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '5' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Fr,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '6' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '6' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS Sa,
         SUM(CASE strftime('%w', e.start_time)
-            WHEN '0' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0
+            WHEN '0' THEN (strftime('%s', e.stop_time) - strftime('%s', e.start_time))
             ELSE 0 END) AS So,
-        SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time)) / 3600.0) AS KW_Total
+        SUM((strftime('%s', e.stop_time) - strftime('%s', e.start_time))) AS KW_Total
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
         AND (isoweek(date(e.start_time), ?, ?) OR isoweek(date(e.stop_time), ?, ?))
@@ -144,7 +150,7 @@ wdayhours_sql_excl = """
 absence = """
     SELECT
         REPLACE(REPLACE(p.description, '├─', ' '), '└─', ' ') AS description,
-        COALESCE(SUM(strftime('%s', e.stop_time) - strftime('%s', e.start_time)), 0) / 3600.0 AS stunden
+        COALESCE(SUM(strftime('%s', e.stop_time) - strftime('%s', e.start_time)), 0) AS stunden
     FROM projects p
     LEFT JOIN entries e ON e.project_id = p.id
     WHERE (isoweek(date(e.start_time), ?, ?) OR isoweek(date(e.stop_time), ?, ?))

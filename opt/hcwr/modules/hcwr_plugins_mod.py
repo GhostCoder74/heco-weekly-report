@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.0
+# File version:   1.0.2
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -49,10 +49,6 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
     if not reference_date is None:
         year = datetime.strptime(reference_date, "%Y-%m-%d").date().year
 
-    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(f"{fname}:\nweeks = {weeks}")
-        info(f"year = {year}")
-
     exists_sql = HCWR_GLOBALS.DB_QUERIES.LOA_exists_sql
     delete_sql = HCWR_GLOBALS.DB_QUERIES.LOA_delete_sql
     update_sql = HCWR_GLOBALS.DB_QUERIES.LOA_update_sql
@@ -62,11 +58,20 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
 
     project_id = HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.get('Feiertag')[0]
 
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}:\nweeks = {weeks}")
+        info(f"year = {year}")
+        info(f"project_id['Feiertag'] = {project_id}")
+
     # Helper: Einfügen eines Feiertags
     def insert_one(date_str, name):
         fn = get_function_name()
         start_ts = f"{date_str} 00:00:00"
-        stop_ts  = f"{date_str} 23:59:59"
+        wdname = get_wday_short_name(date_str)
+        wdayhours = Decimal("8.0")
+        if HCWR_GLOBALS.CFG.has_option("Workdays", wdname):
+            wdayhours = Decimal(HCWR_GLOBALS.CFG.get("Workdays", wdname))
+        stop_ts = add_decimal_hours(start_ts, wdayhours)
         desc     = f"Feiertag: {name}"
 
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:

@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.0
+# File version:   1.0.3
 # 
 # This file is part of "hcwr - heco Weekly Report"
 # Do not remove this header.
@@ -42,7 +42,7 @@ locale.setlocale(locale.LC_ALL, '')
 class myGlobals:
     args = None
     # The VERSION variable is important for version check
-    VERSION = "2.0.1-beta"
+    VERSION = "2.0.3-beta"
 
     # Get Env variables:
     DBG_LEVEL = os.environ.get('DBG_LEVEL')
@@ -51,8 +51,13 @@ class myGlobals:
     DBG_CALL_TREE = []
     DBG_CALL_COUNT = {}
     DBG_PROCESS_ROUTE_MODE = 0
+    DBG_BREAK_POINT_LINE = None
     if DBG_BREAK_POINT is None:
         DBG_BREAK_POINT = ""
+    else:
+        if ":" in DBG_BREAK_POINT:
+            DBG_BREAK_POINT_LINE = DBG_BREAK_POINT.split(':')[1]
+            DBG_BREAK_POINT = DBG_BREAK_POINT.split(':')[0]
     if DBG_PROCESS_ROUTE:
         DBG_PROCESS_ROUTE_MODE = DBG_PROCESS_ROUTE
         DBG_PROCESS_ROUTE = []
@@ -258,7 +263,7 @@ class myGlobals:
     SUNDAY = 0
 
     WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-    WEEKDAY_MAP = {"Mo": "1", "Di": "2", "Mi": "3", "Do": "4", "Fr": "5", "Sa": 6, "So": 7}
+    WEEKDAY_MAP = {"Mo": "1", "Di": "2", "Mi": "3", "Do": "4", "Fr": "5", "Sa": "6", "So": "7"}
     SIGN = None
 
     CONTRACT_HOURS = 0
