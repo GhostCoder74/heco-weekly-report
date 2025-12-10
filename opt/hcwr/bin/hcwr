@@ -51,6 +51,9 @@ sys.path.insert(0, script_dir)
 
 MODULE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../modules"))
 
+# Calling App Name:
+PROC_NAME = os.path.basename(sys.argv[0])
+
 class CustomModuleFinder(importlib.machinery.PathFinder):
     @classmethod
     def find_spec(cls, fullname, path=None, target=None):
@@ -81,88 +84,104 @@ ABSENCE_HELP_TXT = """Set vacation, absense or other LOA days
         -A PH -B 2025-12-01[, -E 2025-12-05]
 
 """
-parser = argparse.ArgumentParser(
-    description="""\
-hcwr "Heco Weekly Report" 
-
-Creates WocheWeekly Summary From heco time.db or PostgreSQL database
-
-Optionale Nutzung von Umgebungsvariablen:
-    YEAR     	  – Jahreszahl (z.B. 2025), das selbe geht auch mit -y/--year
-    WEEK oder KW  – Kalenderwoche, erlaubt sind Formate:
-        WEEK=19      oder KW=19
-        WEEK=2025/19 oder KW=2025/19
-        WEEK=2025-19 oder KW=2025-19
-        WEEK=19/2025 oder KW=19/2025
-        WEEK=19-2025 oder KW=19-2025
-    Falls YEAR nicht gesetzt ist, wird das aktuelle Jahr angenommen.
-
-    GROUP         - Default Datei Berechtigungs-Gruppe,
-                    das selbe wie bei -g/--group
-
-Beispiel:
-    YEAR=2025 WEEK=19 hcwr -n
-""",
-    formatter_class=RawTextHelpFormatter
-)
-parser.add_argument('-w', '-kw', '--week', type=int, help='Calendar week (1-53)')
-parser.add_argument('-y', '--year', type=int, help='Jahr (e.g., 2024)')
-parser.add_argument(
-    '-d', '--database',
-    type=str,
-    help='Path to the SQLite database (optional)',
-    default=os.path.expanduser("~/.heco/time.db")
-)
-parser.add_argument(
-    '-g', '--group',
-    type=str,
-    help='Default User Group',
-    default="intevation"
-)
-parser.add_argument(
-    '-c', '--config',
-    type=str,
-    help='User config file',
-    default="~/.heco/hcwr.conf"
-)
-parser.add_argument(
-    '-o', '--output-file',
-    type=str, help='Path to the target file for the weekly summary'
-)
-parser.add_argument(
-    "-ih", "--init-heco", nargs="?", const=True, metavar="KW",
-    help="Initializes a heco time.db and imports the project structure. Optionally with calendar week (e.g., 27)."
-)
-parser.add_argument(
-    "-C", "--configure", action="store_true",
-    help="Edit configuration interactively"
-)
-parser.add_argument(
-    "-ak", "--add-contract-keyword",
-    action="store_true",
-    help="Interactively capture contract ID and related keywords"
-)
-parser.add_argument('-dk', '--delete-keyword', action='store_true', help='Delete a contract keyword from the database')
-parser.add_argument(
-    "-sk", "--show-keywords",
-    action="store_true",
-    help="Displays all stored contract keywords from the database"
-)
-parser.add_argument("-n", "--dry-run", help="Output only, no saving", action='store_true')
-parser.add_argument("-V", "--version", help="Versions info", action='store_true')
-parser.add_argument("-v", "--verbose", help="Verbose Mode for more output", action='store_true')
-parser.add_argument("-a", "--all-jobs", help="Get all!", action='store_true')
-parser.add_argument("-A", "--absence", help=ABSENCE_HELP_TXT ,metavar="PH | AU | KG | ZKÜ=<H:M> | ZKA=<H:M>")
-parser.add_argument("-J", "--job-entries", help="To use in conjunction with -s/--search for searching in Job-Entries", action='store_true')
-parser.add_argument("-j", "--json", help="Get JSON output, by using --json and --job-entries", action='store_true')
-parser.add_argument("-B", "--start-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
-parser.add_argument("-E", "--stop-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
-parser.add_argument("-D", "--delete", help="Delete vaction or absence EXAMPLE: -D -A -B 2025-12-01[, -E 2025-12-05]", action='store_true')
-parser.add_argument("-S", "--sum-times", help="Get sum of times!", action='store_true')
-parser.add_argument("-T", "--cat-time-totals-of", help="Get category time totals of 'CategoryA[,CategoryB,...]'")
-parser.add_argument("-F", "--format", help="Format STRING")
-parser.add_argument("-s", "--search", help="Search STRING")
-parser.add_argument("-z", "--zeiterfassung", type=str,  help="Formatting for zeiterfassung.txt EXANPLE: -z ckl,sua")
+if PROC_NAME == "hcwr":
+    parser = argparse.ArgumentParser(
+        description="""\
+    hcwr "Heco Weekly Report" 
+    
+    Creates WocheWeekly Summary From heco time.db or PostgreSQL database
+    
+    Optionale Nutzung von Umgebungsvariablen:
+        YEAR     	  – Jahreszahl (z.B. 2025), das selbe geht auch mit -y/--year
+        WEEK oder KW  – Kalenderwoche, erlaubt sind Formate:
+            WEEK=19      oder KW=19
+            WEEK=2025/19 oder KW=2025/19
+            WEEK=2025-19 oder KW=2025-19
+            WEEK=19/2025 oder KW=19/2025
+            WEEK=19-2025 oder KW=19-2025
+        Falls YEAR nicht gesetzt ist, wird das aktuelle Jahr angenommen.
+    
+        GROUP         - Default Datei Berechtigungs-Gruppe,
+                        das selbe wie bei -g/--group
+    
+    Beispiel:
+        YEAR=2025 WEEK=19 hcwr -n
+    """,
+        formatter_class=RawTextHelpFormatter
+    )
+elif PROC_NAME == "hcoh":
+    parser = argparse.ArgumentParser(
+        description="""\
+    hcoh "Heco Over Hours" 
+    """,
+        formatter_class=RawTextHelpFormatter
+    )
+if PROC_NAME in "hcwr hcoh":
+    parser.add_argument('-w', '-kw', '--week', type=int, help='Calendar week (1-53)')
+    parser.add_argument('-y', '--year', type=int, help='Jahr (e.g., 2024)')
+    parser.add_argument(
+        '-d', '--database',
+        type=str,
+        help='Path to the SQLite database (optional)',
+        default=os.path.expanduser("~/.heco/time.db")
+    )
+if PROC_NAME in "hcwr":
+    parser.add_argument(
+        '-g', '--group',
+        type=str,
+        help='Default User Group',
+        default="intevation"
+    )
+if PROC_NAME in "hcwr hcoh":
+    parser.add_argument(
+        '-c', '--config',
+        type=str,
+        help='User config file',
+        default="~/.heco/hcwr.conf"
+    )
+if PROC_NAME in "hcwr":
+    parser.add_argument(
+        '-o', '--output-file',
+        type=str, help='Path to the target file for the weekly summary'
+    )
+    parser.add_argument(
+        "-ih", "--init-heco", nargs="?", const=True, metavar="KW",
+        help="Initializes a heco time.db and imports the project structure. Optionally with calendar week (e.g., 27)."
+    )
+if PROC_NAME in "hcwr hcoh":
+    parser.add_argument(
+        "-C", "--configure", action="store_true",
+        help="Edit configuration interactively"
+    )
+if PROC_NAME in "hcwr":
+    parser.add_argument(
+        "-ak", "--add-contract-keyword",
+        action="store_true",
+        help="Interactively capture contract ID and related keywords"
+    )
+    parser.add_argument('-dk', '--delete-keyword', action='store_true', help='Delete a contract keyword from the database')
+    parser.add_argument(
+        "-sk", "--show-keywords",
+        action="store_true",
+        help="Displays all stored contract keywords from the database"
+    )
+if PROC_NAME in "hcwr hcoh":
+    parser.add_argument("-n", "--dry-run", help="Output only, no saving", action='store_true')
+    parser.add_argument("-V", "--version", help="Versions info", action='store_true')
+    parser.add_argument("-v", "--verbose", help="Verbose Mode for more output", action='store_true')
+if PROC_NAME in "hcwr":
+    parser.add_argument("-a", "--all-jobs", help="Get all!", action='store_true')
+    parser.add_argument("-A", "--absence", help=ABSENCE_HELP_TXT ,metavar="PH | AU | KG | ZKÜ=<H:M> | ZKA=<H:M>")
+    parser.add_argument("-J", "--job-entries", help="To use in conjunction with -s/--search for searching in Job-Entries", action='store_true')
+    parser.add_argument("-j", "--json", help="Get JSON output, by using --json and --job-entries", action='store_true')
+    parser.add_argument("-B", "--start-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
+    parser.add_argument("-E", "--stop-day", help="Date string YYYY-MM-DD",metavar="YYYY-MM-DD")
+    parser.add_argument("-D", "--delete", help="Delete vaction or absence EXAMPLE: -D -A -B 2025-12-01[, -E 2025-12-05]", action='store_true')
+    parser.add_argument("-S", "--sum-times", help="Get sum of times!", action='store_true')
+    parser.add_argument("-T", "--cat-time-totals-of", help="Get category time totals of 'CategoryA[,CategoryB,...]'")
+    parser.add_argument("-F", "--format", help="Format STRING")
+    parser.add_argument("-s", "--search", help="Search STRING")
+    parser.add_argument("-z", "--zeiterfassung", type=str,  help="Formatting for zeiterfassung.txt EXANPLE: -z ckl,sua")
 
 ########## MODULES IMPORT #########################################################
 # ../modules
@@ -181,7 +200,7 @@ elif MODULE_DIR not in sys.path:
             print(f"[DEBUG] Result from HCWR_GLOBALS_mod: HCWR_GLOBALS.args = {HCWR_GLOBALS.args}")
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_dbg_mod")
-        from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
+        from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, whereami, debug_sql
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_remote_mod")
         from hcwr_remote_mod import ssh_config_check, checkNfetch_file_from_NIS
@@ -228,7 +247,6 @@ elif MODULE_DIR not in sys.path:
         warning("Could not load modules from:",MODULE_DIR,"ERROR")
         print(f"Details: {e}")
         show_process_route()
-        sys.exit(1)
 
 HCWR_GLOBALS.args = parser.parse_args()
 
@@ -237,7 +255,8 @@ if HCWR_GLOBALS.PROC_NAME in "hcoh":
     HCWR_GLOBALS.args.verbose = True
 
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(HCWR_GLOBALS.PROC_NAME, "", Fore.GREEN + "Running as" + Style.RESET_ALL)
+    info(HCWR_GLOBALS.PROC_NAME, Fore.BLUE + " for " + 
+    Fore.WHITE + "W" + str(HCWR_GLOBALS.args.week), Fore.GREEN + "Running as" + Style.RESET_ALL)
 
 if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
     debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
@@ -250,7 +269,6 @@ if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBA
 if HCWR_GLOBALS.args.version:
     version()
     show_process_route()
-    sys.exit(0)
 
 if HCWR_GLOBALS.GROUP:
     try:
@@ -260,7 +278,6 @@ if HCWR_GLOBALS.GROUP:
     except Exception as e:
         warning(f"Fehler beim Parsen von GROUP ", e, "Error")
         show_process_route()
-        sys.exit(1)
 
 if HCWR_GLOBALS.GROUP and check_user_in_group(HCWR_GLOBALS.GROUP):
     HCWR_GLOBALS.args.group = HCWR_GLOBALS.GROUP
@@ -273,42 +290,37 @@ if os.path.exists(HCWR_GLOBALS.CFG_FILE):
 
     if not auto_migration() and HCWR_GLOBALS.args.init_heco is None:
         show_process_route()
-        sys.exit(1)
 else:
     warning(f"Keine Konfigurationsdatei gefunden:", HCWR_GLOBALS.CFG_FILE)
     # Automigration vorher durchlaufen lassen, falls es Änderungen gab die angepassterden müssen:
     if not auto_migration():
         show_process_route()
-        sys.exit(1)
     else:
         get_config("no_config")
 importlib.invalidate_caches()
 
 initialize_contracts_db()
 
-if HCWR_GLOBALS.args.init_heco is not None:
-    if HCWR_GLOBALS.args.init_heco is True:
-        init_heco()  # Ohne KW
-    else:
-        init_heco(HCWR_GLOBALS.args.init_heco)  # Mit KW
-    show_process_route()
-    sys.exit(0)
-
-if HCWR_GLOBALS.args.add_contract_keyword:
-    set_contract_keywords([])
-    show_process_route()
-    sys.exit(0)
-
-if HCWR_GLOBALS.args.show_keywords:
-    show_contract_keywords()
-    show_process_route()
-    sys.exit(0)
-
-if HCWR_GLOBALS.args.delete_keyword:
-    delete_contract_keyword()
-    show_process_route()
-    sys.exit(0)
-
+if PROC_NAME == "hcwr":
+    if HCWR_GLOBALS.args.init_heco is not None:
+        if HCWR_GLOBALS.args.init_heco is True:
+            init_heco()  # Ohne KW
+        else:
+            init_heco(HCWR_GLOBALS.args.init_heco)  # Mit KW
+        show_process_route()
+    
+    if HCWR_GLOBALS.args.add_contract_keyword:
+        set_contract_keywords([])
+        show_process_route()
+    
+    if HCWR_GLOBALS.args.show_keywords:
+        show_contract_keywords()
+        show_process_route()
+    
+    if HCWR_GLOBALS.args.delete_keyword:
+        delete_contract_keyword()
+        show_process_route()
+    
 now = datetime.now()
 if not HCWR_GLOBALS.args.week or not HCWR_GLOBALS.args.year:
     try:
@@ -320,54 +332,84 @@ try:
     if HCWR_GLOBALS.args.week and not len(str(HCWR_GLOBALS.args.week))<3:
         raise ValueError(f"Ungültiges Format für -w/-kw/--week: {HCWR_GLOBALS.args.week}")
         show_process_route()
-        sys.exit(1)
     if HCWR_GLOBALS.args.year and not len(str(HCWR_GLOBALS.args.year))==4:
         raise ValueError(f"Ungültiges Format für -y/--year: {HCWR_GLOBALS.args.year}")
         show_process_route()
-        sys.exit(1)
 
 except Exception as e:
     warning(f"Fehler beim Parsen : ", e, "Error")
     show_process_route()
-    sys.exit(1)
 
 HCWR_GLOBALS.MONDAY = date.fromisocalendar(HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week, 1)
 HCWR_GLOBALS.SUNDAY = HCWR_GLOBALS.MONDAY + timedelta(days=6)
 
-if HCWR_GLOBALS.args.search and HCWR_GLOBALS.args.job_entries:
-    fetch_and_display_entries()
-    show_process_route()
-    sys.exit(0)
+# DBG_BREAK_POINT="hcwr:326"
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"HCWR_GLOBALS.MONDAY = {HCWR_GLOBALS.MONDAY}")
+        info(f"HCWR_GLOBALS.SUNDAY = {HCWR_GLOBALS.SUNDAY}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
-if not HCWR_GLOBALS.args.absence:
+if PROC_NAME == "hcwr":
+    if HCWR_GLOBALS.args.search and HCWR_GLOBALS.args.job_entries:
+        fetch_and_display_entries()
+        show_process_route()
+    AB = HCWR_GLOBALS.args.absence
+else:
+    AB = None    
+    
+if not AB:
     is_now, is_complete, missing = is_current_week_and_complete(HCWR_GLOBALS.args.database, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
 
     if not is_complete and is_now and not HCWR_GLOBALS.args.configure:
         info("Es sind noch keine Zeiten erfasst, für :", ", ".join(missing))
         show_process_route()
-        sys.exit(1)
     
     
     HCWR_GLOBALS.PROJECTS_ID_MAP = get_or_create_projects_id_map()
     HCWR_GLOBALS.WDAYHOURS_MAP  = get_or_create_wdayhours_map()
+    
+    # DBG_BREAK_POINT="hcwr:352"
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        wai = int(whereami()['line'])
+        if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+            info(f"is_now = {is_now}")
+            info(f"is_complete = {is_complete}")
+            info(f"missing = {missing}")
+            info(f"HCWR_GLOBALS.WDAYHOURS_MAP = {HCWR_GLOBALS.WDAYHOURS_MAP}")
+            prompt = "Enter für fortfahren oder N für Nein "
+            answer = input_with_prefill(prompt, "", '')
+            if answer in ("N", "n"):
+                show_process_route()
     
     if HCWR_GLOBALS.args.configure:
         configure_interactive()
         # Config Default Example Kommentare in HCWR_GLOBALS.CFG_FILE einsetzen:
         update_config_comments()
         show_process_route()
-        sys.exit(0)
 
 weekhours, week = get_config()
 # Connect to the SQLite database
 db_path = HCWR_GLOBALS.args.database
-if int(HCWR_GLOBALS.DBG_LEVEL)==1:
-    debug (f"weekhours = {weekhours}")
-    debug (f"week = {week}")
-    debug (f"db_path = {db_path}")
 conn = HCWR_GLOBALS.DBMS.connect(db_path)
 
-if HCWR_GLOBALS.args.absence:
+# DBG_BREAK_POINT="hcwr:376"
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"weekhours = {weekhours}")
+        info(f"week = {week}")
+        info(f"db_path = {db_path}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+
+if AB:
     # -----------------------------------------------------------------------
     # Handling for: 
     # ZKÜ, ZKA, Urlaub, AU, KG, Privat 
@@ -376,13 +418,23 @@ if HCWR_GLOBALS.args.absence:
     if decimal_match:
         x = decimal_match.group(2).replace(",", ".")  # standardisiere Komma → Punkt
         Absence = HCWR_GLOBALS.args.absence.split("=")[0] + "=" + hours_to_hms(x)
-    debug(f"Absence = {Absence}")
     match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}):([0-9]{2})", Absence)
     failedmatch = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=?", Absence)
     H = None  # Hours for ZKÜ or ZKA
     M = None  # Minutes for ZKÜ or ZKA
-    debug(f"match = {match}")
-    debug(f"failedmatch = {failedmatch}")
+    # DBG_BREAK_POINT="hcwr:401"
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        wai = int(whereami()['line'])
+        if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+            info(f"Absence = {Absence}")
+            info(f"decimal_match = {decimal_match}")
+            info(f"x = {x}")
+            info(f"match = {match}")
+            info(f"failedmatch = {failedmatch}")
+            prompt = "Enter für fortfahren oder N für Nein "
+            answer = input_with_prefill(prompt, "", '')
+            if answer in ("N", "n"):
+                show_process_route()
     
     if not Absence in "PH VAC AU KG":
         if match:
@@ -391,8 +443,6 @@ if HCWR_GLOBALS.args.absence:
             Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
             warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
             show_process_route()
-            sys.exit(1)
-    
     
     if (Absence and HCWR_GLOBALS.args.start_day) or (Absence in "AU ZKÜ ZKA PRIV" and H and M):
         start_date = HCWR_GLOBALS.args.start_day
@@ -420,17 +470,31 @@ if HCWR_GLOBALS.args.absence:
             else:
                 date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
                 warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.RED + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.RED + f"{msgZ}!")
+    
             prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
             answer = input_with_prefill(prompt, "", "").strip().lower()
             if not answer in ("", "j", "ja", "y", "yes"):
                 show_process_route()
-                sys.exit(1)
             else:
                 print()
     
             year = date_obj.year
             start_date = f"{year}-01-01"
     
+            # DBG_BREAK_POINT="hcwr:460"
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                wai = int(whereami()['line'])
+                if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                    info(f"Absence = {Absence}")
+                    info(f"year = {year}")
+                    info(f"start_date = {start_date}")
+                    info(f"H = {H}")
+                    info(f"M = {M}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
+
         stop_date  = HCWR_GLOBALS.args.stop_day
         debug(f"Absence = {Absence}")
         if match:
@@ -466,6 +530,20 @@ if HCWR_GLOBALS.args.absence:
     
                 info(f"{Absence} Buchung ab :" ,Fore.YELLOW + next_start_time)
                 
+            # DBG_BREAK_POINT="hcwr:509"
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                wai = int(whereami()['line'])
+                if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                    info(f"Absence = {Absence}")
+                    info(f"year = {year}")
+                    info(f"start_date = {start_date}")
+                    info(f"next_start_time = {next_start_time}")
+                    info(f"H = {H}")
+                    info(f"M = {M}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
             msgZ = "eingetragen bzw. aktualisieren, falls vorhanden"
             if MODE:
                 msgZ = f"die Eintragung " + Fore.YELLOW + Style.BRIGHT + "GELÖSCHT" + Fore.RED + " werden, falls vorhanden"
@@ -475,26 +553,33 @@ if HCWR_GLOBALS.args.absence:
             answer = input_with_prefill(prompt, "", "").strip().lower()
             if not answer in ("", "j", "ja", "y", "yes"):
                 show_process_route()
-                sys.exit(1)
             else:
                 print()
     
         if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
             warning(f"Wrong date format: ", start_date , "ERROR")
             show_process_route()
-            sys.exit(1)
             
         if stop_date:
             if not is_valid_ymd(stop_date):
                 warning(f"Wrong date format: ", stop_date , "ERROR")
                 show_process_route()
-                sys.exit(1)
     
         result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
-        if HCWR_GLOBALS.DBG_BREAK_POINT:
-            info(result)
+        # DBG_BREAK_POINT="hcwr:545"
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            wai = int(whereami()['line'])
+            if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                info(f"Absence = {Absence}")
+                info(f"PNAME = {PNAME}")
+                info(f"start_date = {start_date}")
+                info(f"stop_date = {stop_date}")
+                info(f"MODE = {MODE}")
+                info(f"H = {H}")
+                info(f"M = {M}")
+                info(f"result = {result}")
+
         show_process_route()
-        sys.exit(0)
     
 # -----------------------------------------------------------------------
 
@@ -502,19 +587,19 @@ myname = extract_name()
 
 HCWR_GLOBALS.KW_REPORT_DIR = os.path.expanduser(f'{HCWR_GLOBALS.KW_REPORT_BASE_DIR}/{HCWR_GLOBALS.args.year}/{HCWR_GLOBALS.args.week}')
 HCWR_GLOBALS.KW_REPORT_FILE = os.path.join(HCWR_GLOBALS.KW_REPORT_DIR, f"{os.getlogin()}.txt")
-
-if HCWR_GLOBALS.args.output_file:
-    if not check_directory_exists(os.path.abspath(HCWR_GLOBALS.args.output_file)):
-        print(Fore.RED + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(HCWR_GLOBALS.args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
-    else:
-        HCWR_GLOBALS.KW_REPORT_FILE = os.path.abspath(HCWR_GLOBALS.args.output_file)
+if PROC_NAME == "hcwr":
+    if HCWR_GLOBALS.args.output_file:
+        if not check_directory_exists(os.path.abspath(HCWR_GLOBALS.args.output_file)):
+            print(Fore.RED + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(HCWR_GLOBALS.args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
+        else:
+            HCWR_GLOBALS.KW_REPORT_FILE = os.path.abspath(HCWR_GLOBALS.args.output_file)
 
 # Register custom SQL function to check for ISO week
 if not HCWR_GLOBALS.CFG.has_option("Database", "dbms") or HCWR_GLOBALS.CFG.get("Database", "dbms") == "sqlite3":
     conn.create_function("isoweek", 3, isoweek)
 cursor = conn.cursor()
 
-sql = HCWR_GLOBALS.DB_QUERIES.total_per_project
+#sql = HCWR_GLOBALS.DB_QUERIES.total_per_project
 
 if HCWR_GLOBALS.args.dry_run:
     info("Dry-Run Mode is: ", "Active!!!")
@@ -528,14 +613,22 @@ if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
     sql = HCWR_GLOBALS.DB_QUERIES.total_per_project_by_week
     params.extend([HCWR_GLOBALS.MONDAY.strftime("%Y-%m-%d"), HCWR_GLOBALS.SUNDAY.strftime("%Y-%m-%d")])
 
+# DBG_BREAK_POINT="hcwr:592"
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"HCWR_GLOBALS.KW_REPORT_DIR = {HCWR_GLOBALS.KW_REPORT_DIR}")
+        info(f"HCWR_GLOBALS.KW_REPORT_FILE = {HCWR_GLOBALS.KW_REPORT_FILE}")
+        info(f"start = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
+        info(f"stop = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
+        info(f"sql = {debug_sql(sql, params)}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
     info(f"Stundenberechnung", "", "Start")
-
-if int(HCWR_GLOBALS.DBG_LEVEL) == 6:
-    debug(f"sql = {sql}")
-if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
-    debug(f"start = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
-    debug(f"stop = {HCWR_GLOBALS.args.year}, {HCWR_GLOBALS.args.week}")
 
 cursor.execute(sql, params)
 rows = cursor.fetchall()
@@ -553,8 +646,19 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"rows: {rows}")
 
 PBAR_WEEKS = diff_calendar_weeks(HCWR_GLOBALS.CFG.get('Onboarding', 'firstday'), HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
-#info(f"PBAR_WEEKS = {PBAR_WEEKS}")
-#sys.exit(0)
+# DBG_BREAK_POINT="hcwr:625"
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"rows = {rows}")
+        info(f"holidays_result = {holidays_result}")
+        info(f"HCWR_GLOBALS.args.week = {HCWR_GLOBALS.args.week}")
+        info(f"PBAR_WEEKS = {PBAR_WEEKS}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+
 if int(PBAR_WEEKS) < int(HCWR_GLOBALS.args.week):
     WF = int(PBAR_WEEKS)
 else:
@@ -562,10 +666,6 @@ else:
 HCWR_GLOBALS.PBAR_MAX = len(rows) + 6 + WF
 HCWR_GLOBALS.PBAR_VAL = 1
 for description, duration in rows:
-    if int(HCWR_GLOBALS.DBG_LEVEL) == 3:
-        debug(f"description: {description}")
-        debug(f"   duration: {duration}")
-        debug(f"--------------------------")
     description = description.rstrip()
     if any(description.startswith(key) for keys in HCWR_GLOBALS.MAPPING.values() for key in keys):
         progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
@@ -575,13 +675,27 @@ for description, duration in rows:
     if duration != None:
         TOTAL_SUM += duration
     is_sub = description.startswith("  ")
-    if int(HCWR_GLOBALS.DBG_LEVEL) == -10 and is_sub:
-        debug(f"-------------------------\nis_sub = {is_sub}\ndescription: {description}")
-        debug(f"duration: {duration}\n-------------------------")
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        # DBG_BREAK_POINT="hcwr:655"
+        wai = int(whereami()['line'])
+        if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+            info(f"is_sub = {is_sub}, description: {description}, duration: {duration}")
+            info(f"TOTAL_SUM = {TOTAL_SUM}")
+            prompt = "Enter für fortfahren oder N für Nein "
+            answer = input_with_prefill(prompt, "", '')
+            if answer in ("N", "n"):
+                show_process_route()
     if is_sub:
-        if int(HCWR_GLOBALS.DBG_LEVEL) == 5 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
-            debug(f"IS SUB -> description: {description}")
-            debug(f"IS SUB -> duration: {duration}")
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            # DBG_BREAK_POINT="hcwr:666"
+            wai = int(whereami()['line'])
+            if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                info(f"IS SUB -> description: {description}")
+                info(f"IS SUB -> duration: {duration}")
+                prompt = "Enter für fortfahren oder N für Nein "
+                answer = input_with_prefill(prompt, "", '')
+                if answer in ("N", "n"):
+                    show_process_route()
         if duration != None:
             sub_duration += duration
         # Entry als UK aus Tabelle entries holen, passend zur Thematik:
@@ -597,22 +711,34 @@ for description, duration in rows:
         if ("  Organisation" == description or "  Organisation" == description or
                 "  Sacharbeit abrechenbar" == description or
                 "  Sacharbeit andere*" == description):
-            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
-                debug(f"IS Auftrag UUK -> description: {description}")
             uk_entries = get_UK_and_UUK(conn, sql, description, params)
-            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
-                debug(f"uk_entries = {uk_entries}")
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                # DBG_BREAK_POINT="hcwr:692"
+                wai = int(whereami()['line'])
+                if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                    info(f"IS Auftrag UUK -> description: {description}")
+                    info(f"uk_entries = {uk_entries}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
             for row in uk_entries:
                 debug(f"row = {row}")
                 entry_description = f"  {row['entry']}"
                 uuk = row['uuk']
                 entry_duration = row['duration']
-                if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -10:
-                    debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+                if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                    # DBG_BREAK_POINT="hcwr:707"
+                    wai = int(whereami()['line'])
+                    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                        info(f"IS Auftrag UUK -> description: {description}\n-------------------\nresult = {result}\n-------------------")
+                        info(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+                        prompt = "Enter für fortfahren oder N für Nein "
+                        answer = input_with_prefill(prompt, "", '')
+                        if answer in ("N", "n"):
+                            show_process_route()
 
                 added = False
-                if result != None and (int(HCWR_GLOBALS.DBG_LEVEL) == 1 or int(HCWR_GLOBALS.DBG_LEVEL) == -2):
-                    debug(f"IS Auftrag UUK -> description: {description}\n-------------------\nresult = {result}\n-------------------")
                 if HCWR_GLOBALS.CFG.has_option("Database", "dbms") and HCWR_GLOBALS.CFG.get("Database", "dbms") == "pg":
                     for r in result:
                         if 'contract_id' in r and r['contract_id'] == row['contract_id']:
@@ -637,11 +763,17 @@ for description, duration in rows:
             HCWR_GLOBALS.PBAR_VAL += 1
     else:
         if description == "Auftrag#":
-            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
-                debug(f"IS Auftrag UUK -> description: {description}")
             uk_entries = get_UK_and_UUK(conn, sql, description, params)
-            if int(HCWR_GLOBALS.DBG_LEVEL) == 4 or int(HCWR_GLOBALS.DBG_LEVEL) == -2:
-                debug(f"uk_entries = {uk_entries}")
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                # DBG_BREAK_POINT="hcwr:744"
+                wai = int(whereami()['line'])
+                if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                    info(f"IS Auftrag UUK -> description: {description}")
+                    info(f"uk_entries = {uk_entries}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
             for row in uk_entries:
                 entry_description = f"  {row['entry']}"
                 uuk = row['uuk']
@@ -652,6 +784,19 @@ for description, duration in rows:
                 result.append({"description": entry_description, "duration": entry_duration, "uuk": None, "uuk_duration": None})
                 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
                 HCWR_GLOBALS.PBAR_VAL += 1
+                if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                    # DBG_BREAK_POINT="hcwr:764"
+                    wai = int(whereami()['line'])
+                    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                        info(f"description: {entry_description}")
+                        info(f"duration = {entry_duration}")
+                        info(f"row['uuk'] = {row['uuk']}")
+                        info(f"uuk = None")
+                        info(f"uuk_duration = None")
+                        prompt = "Enter für fortfahren oder N für Nein "
+                        answer = input_with_prefill(prompt, "", '')
+                        if answer in ("N", "n"):
+                            show_process_route()
 
         if description == "Auftrag#":
             description = "Leistungserbringung"
@@ -666,29 +811,43 @@ for description, duration in rows:
         }
         sub_duration = 0
         result.append(current_parent)
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            # DBG_BREAK_POINT="hcwr:791"
+            wai = int(whereami()['line'])
+            if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+                info(f"current_parent: {current_parent}")
+                prompt = "Enter für fortfahren oder N für Nein "
+                answer = input_with_prefill(prompt, "", '')
+                if answer in ("N", "n"):
+                    show_process_route()
         progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
         HCWR_GLOBALS.PBAR_VAL += 1
 
 result.reverse()
 result_old = result
 result = merge_results(result)
-if int(HCWR_GLOBALS.DBG_LEVEL) == 1:
-    debug(f"result = \n{result}")
-    debug(f"result_old = \n{result_old}")
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:806"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"result_old: {result_old}")
+        info(f"result: {result}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 mo, di, mi, do, fr, sa, so, kw_total = get_weekday_hours_per_day(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
 
-
-
 wdays = {
-    "Mo": Decimal(mo),
-    "Di": Decimal(di),
-    "Mi": Decimal(mi),
-    "Do": Decimal(do),
-    "Fr": Decimal(fr),
-    "Sa": Decimal(sa),
-    "So": Decimal(so)
+    "Mo": float(mo/3600),
+    "Di": float(di/3600),
+    "Mi": float(mi/3600),
+    "Do": float(do/3600),
+    "Fr": float(fr/3600),
+    "Sa": float(sa/3600),
+    "So": float(so/3600)
 }
 wdayhours = {
     "Mo": mo,
@@ -700,6 +859,17 @@ wdayhours = {
     "So": so
 }
 
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:839"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"wdays: {wdays}")
+        info(f"wdayhours: {wdayhours}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+
 # Calculate absences
 abwesenheiten = berechne_abwesenheiten(conn, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
@@ -709,22 +879,35 @@ if abwesenheiten["temp"] > 0:
     msg = f"Unter Temp sind noch Zeiten für KW {HCWR_GLOBALS.args.week}/{HCWR_GLOBALS.args.year} nicht einsortiert!"
     print(Fore.RED + Style.BRIGHT + "ABBRUCH: "  + Style.RESET_ALL + msg, file=sys.stderr)
     show_process_route()
-    sys.exit(1)
 
-feiertage = float(0)
+feiertage = 0
 if abwesenheiten.get("feiertag"):
     feiertage = abwesenheiten["feiertag"]
-urlaub = float(0)
+urlaub = 0
 if abwesenheiten.get("urlaub"):
     urlaub = abwesenheiten["urlaub"]
-krank = float(0)
+krank = 0
 if abwesenheiten.get("krank"):
     krank = abwesenheiten["krank"]
-zk_minus = float(0)
+zk_minus = 0
 if abwesenheiten.get("zk_minus"):
     zk_minus = abwesenheiten["zk_minus"]
 
-abwesend = 0.0
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:873"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"abwesenheiten = {abwesenheiten}")
+        info(f"feiertage = {feiertage}")
+        info(f"urlaub = {urlaub}")
+        info(f"krank = {krank}")
+        info(f"zk_minus = {zk_minus}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
+
+abwesend = 0
 
 # Work hours and overtime calculation
 WORK_HOURS = TOTAL_SUM
@@ -733,17 +916,20 @@ HCWR_GLOBALS.CONTRACT_HOURS = weekhours
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 HCWR_GLOBALS.PBAR_VAL += 1
 
-#s, kw_stundenkonto = overhours_main(conn, HCWR_GLOBALS.args.week)
 s, kw_stundenkonto = get_kw_overhours(conn, HCWR_GLOBALS.args.week)
-if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-    debug(f"WORK_HOURS: {WORK_HOURS}")
-    debug(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
-    debug(f"kw_stundenkonto: {kw_stundenkonto}")
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:897"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"s = {s}, kw_stundenkonto = {kw_stundenkonto}")
+        info(f"WORK_HOURS: {WORK_HOURS}")
+        info(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
-#info("kw_stundenkonto =", kw_stundenkonto, type(kw_stundenkonto))
-#info("zk_minus =", zk_minus, type(zk_minus))
-
-kw_stundenkonto -= float(zk_minus)
+kw_stundenkonto -= int(zk_minus)
 
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 HCWR_GLOBALS.PBAR_VAL += 1
@@ -754,34 +940,44 @@ HCWR_GLOBALS.SIGN, kw_overhours_add = get_kw_overhours_add(conn ,HCWR_GLOBALS.ar
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 HCWR_GLOBALS.PBAR_VAL += 1
 
-#info(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
-if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-    debug(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{kw_overhours_add}")
-    debug(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:920"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"HCWR_GLOBALS.SIGN = {HCWR_GLOBALS.SIGN}")
+        info(f"kw_overhours_add = {kw_overhours_add}")
+        info(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
-if float(WORK_HOURS) + float(krank) + float(urlaub) + float(feiertage) < HCWR_GLOBALS.CONTRACT_HOURS:
-    kw_hours_diff = float(HCWR_GLOBALS.CONTRACT_HOURS - WORK_HOURS)
-    if int(HCWR_GLOBALS.DBG_LEVEL)==-100:
-        debug(f"kw_hours_diff: {kw_hours_diff}")
+kw_hours_diff = 0
+if int(WORK_HOURS) + int(krank) + int(urlaub) + int(feiertage) < float(HCWR_GLOBALS.CONTRACT_HOURS) * 3600:
+    kw_hours_diff = float(HCWR_GLOBALS.CONTRACT_HOURS) * 3600 - WORK_HOURS
 
-if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-    debug(f"final kw_stundenkonto: {kw_stundenkonto}")
-    debug(f"final kw_overhours_add: {kw_overhours_add}")
-    debug(f"final kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:936"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"kw_hours_diff: {kw_hours_diff}")
+        info(f"final kw_stundenkonto: {kw_stundenkonto}")
+        info(f"final kw_overhours_add: {kw_overhours_add}")
+        info(f"final kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
 # Sundenkonto : + oder - Stunden?
 if HCWR_GLOBALS.SIGN == "+":
-    kw_old_overhours = float(kw_stundenkonto) - float(kw_overhours_add)
+    kw_old_overhours = (kw_stundenkonto - kw_overhours_add)
 else:
-    kw_old_overhours = float(kw_stundenkonto) + float(kw_overhours_add)
+    kw_old_overhours = (kw_stundenkonto + kw_overhours_add)
 
-if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-    debug(f"kw_old_overhours: {kw_old_overhours}")
-abwesend += float(krank)
+abwesend += krank
 
-kw_should = HCWR_GLOBALS.CONTRACT_HOURS - (abwesend + urlaub + feiertage)
-if int(HCWR_GLOBALS.DBG_LEVEL) == -100:
-    debug(f"kw_should: {kw_should}")
+kw_should = HCWR_GLOBALS.CONTRACT_HOURS * 3600 - (abwesend + urlaub + feiertage)
 
 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
@@ -793,13 +989,31 @@ if not os.path.exists(HCWR_GLOBALS.KW_REPORT_DIR) and not HCWR_GLOBALS.args.dry_
     os.makedirs(HCWR_GLOBALS.KW_REPORT_DIR)
 
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(f" Feiertage: {format_decimal(feiertage)}, Urlaub: {format_decimal(urlaub)}, Krank: {format_decimal(krank)}, Abwesend: {format_decimal(abwesend)}, Überstunden: {format_decimal(kw_overhours_add)}", "", f"Info zu KW {HCWR_GLOBALS.args.week}")
-    info(f" Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, Std KW = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
-if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
-    debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+    info(f" Feiertage: {format_decimal(feiertage/3600)}, Urlaub: {format_decimal(urlaub/3600)}, Krank: {format_decimal(krank/3600)}, Abwesend: {format_decimal(abwesend/3600)}, Überstunden: {format_decimal(kw_overhours_add/3600)}", "", f"Info zu KW {HCWR_GLOBALS.args.week}")
+    info(f" Mo: {format_decimal(mo/3600)}, Di: {format_decimal(di/3600)}, Mi: {format_decimal(mi/3600)}, Do: {format_decimal(do/3600)}, Fr: {format_decimal(fr/3600)}, Sa: {format_decimal(sa/3600)}, So: {format_decimal(so/3600)}, Std KW = {format_decimal(kw_total/3600)}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
+
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:972"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
+        info(f"WORK_HOURS: {WORK_HOURS}")
+        info(f"kw_should: {kw_should}")
+        info(f"kw_old_overhours: {kw_old_overhours}")
+        info(f"HCWR_GLOBALS.SIGN: {HCWR_GLOBALS.SIGN}")
+        info(f"kw_overhours_add: {kw_overhours_add}")
+        info(f"kw_stundenkonto: {kw_stundenkonto}")
+        info(f"abwesend: {abwesend}")
+        info(f"krank: {krank}")
+        info(f" Feiertage: {format_decimal(feiertage)}, Urlaub: {format_decimal(urlaub)}, Krank: {format_decimal(krank)}, Abwesend: {format_decimal(abwesend)}, Überstunden: {format_decimal(kw_overhours_add)}", "", Fore.YELLOW + f"Info (Zeiten in Sekunden) zu KW {HCWR_GLOBALS.args.week}")
+        info(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}, Sa: {sa}, So: {so}, kw_total = {kw_total}","",Fore.YELLOW + f"Sekunden/Tag KW {HCWR_GLOBALS.args.week}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
 if HCWR_GLOBALS.PROC_NAME in "hcoh":
-    info(f"{format_decimal(WORK_HOURS)} von {format_decimal(kw_should)} (Vertrag: {format_decimal(HCWR_GLOBALS.CONTRACT_HOURS)} Feiertage: {format_decimal(feiertage)} Urlaub: {format_decimal(urlaub)} Abwesend: {format_decimal(abwesend)})", "", "Arbeitsstunden")
+    info(f"{format_decimal(WORK_HOURS/3600)} von {format_decimal(kw_should/3600)} (Vertrag: {format_decimal(HCWR_GLOBALS.CONTRACT_HOURS)} Feiertage: {format_decimal(feiertage/3600)} Urlaub: {format_decimal(urlaub/3600)} Abwesend: {format_decimal(abwesend/3600)})", "", "Arbeitsstunden")
     if kw_old_overhours < kw_stundenkonto or kw_stundenkonto > 0:
         IC = Fore.GREEN
         GL = "Überstunden"
@@ -816,10 +1030,10 @@ if HCWR_GLOBALS.PROC_NAME in "hcoh":
         HO = Fore.YELLOW
     else:
         HO = Fore.MAGENTA
-    info(HO + f"  {format_decimal(kw_old_overhours)} " + 
-    SC + f"{HCWR_GLOBALS.SIGN} {format_decimal(kw_overhours_add)}" + 
-    Fore.WHITE + f" = " + IC + f"{format_decimal(kw_stundenkonto)} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
-    sys.exit(0)
+    info(HO + f"  {format_decimal(kw_old_overhours/3600)} " + 
+    SC + f"{HCWR_GLOBALS.SIGN} {format_decimal(kw_overhours_add/3600)}" + 
+    Fore.WHITE + f" = " + IC + f"{format_decimal(kw_stundenkonto/3600)} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
+    show_process_route()
 
 REPORT = generate_report(WORK_HOURS, kw_should, HCWR_GLOBALS.CONTRACT_HOURS, feiertage, urlaub,
                          abwesend, kw_old_overhours, kw_overhours_add, kw_stundenkonto,
