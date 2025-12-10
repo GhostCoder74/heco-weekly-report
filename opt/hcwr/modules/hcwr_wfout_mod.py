@@ -7,7 +7,7 @@
 # Copyright (c) 2024-2026 by Intevation GmbH                                                  
 # SPDX-License-Identifier: GPL-2.0-or-later                                                   
 #
-# File version:   1.0.3
+# File version:   1.0.4
 # 
 # This file is part of "hcwr - heco Weekly Report"                                            
 # Do not remove this header.                                                                  
@@ -67,7 +67,7 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
     else:
         sign = "+"
     report_lines.append(
-        f"Stundenkonto: {kwOLD} {sign} {abs(kwADD)} "
+        f"Stundenkonto: {kwOLD} {sign} {format_decimal(abs(kwADD))} "
         f"= {ZK}"
     )
 
