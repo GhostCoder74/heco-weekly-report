@@ -1,19 +1,19 @@
-# -----------------------------------------------------------------------------------------   
-# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter            
+# -----------------------------------------------------------------------------------------
+# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter
 # File:           hcwr_dbms_mod.py
-# Authors:        Christian Klose <cklose@intevation.de>                                      
-#                 Raimund Renkert <rrenkert@intevation.de>                                    
-# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
-# Copyright (c) 2024-2026 by Intevation GmbH                                                  
-# SPDX-License-Identifier: GPL-2.0-or-later                                                   
+# Authors:        Christian Klose <cklose@intevation.de>
+#                 Raimund Renkert <rrenkert@intevation.de>
+# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)
+# Copyright (c) 2024-2026 by Intevation GmbH
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.2
-# 
-# This file is part of "hcwr - heco Weekly Report"                                            
-# Do not remove this header.                                                                  
-# Wochenfazit URL:                                                                            
-# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit    
-# Header added by https://github.com/GhostCoder74/Set-Project-Headers                         
+# File version:   1.0.4
+#
+# This file is part of "hcwr - heco Weekly Report"
+# Do not remove this header.
+# Wochenfazit URL:
+# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit
+# Header added by https://github.com/GhostCoder74/Set-Project-Headers
 # -----------------------------------------------------------------------------------------
 import importlib
 import shutil
@@ -263,7 +263,7 @@ def auto_migration():
 
             for old_key, new_key in mapping.items():
                 if HCWR_GLOBALS.CFG.has_option("ProjectIDs", old_key):
-                    value = HCWR_GLOBALS.CFG.get("ProjectIDs", old_key)                    
+                    value = HCWR_GLOBALS.CFG.get("ProjectIDs", old_key)
                     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
                         info(f"value old_key = {value}")
                         info(f"old_key = {old_key}")
@@ -300,8 +300,8 @@ def auto_migration():
             cursor = conn.cursor()
             debug(f"db_key_structure = {db_key_structure}")
             debug(f"len(HCWR_GLOBALS.PROJECTS_ID_MAP) = {len(HCWR_GLOBALS.PROJECTS_ID_MAP)}")
-            #if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP) - 5 : 
-            if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP): 
+            #if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP) - 5 :
+            if db_key_structure != len(HCWR_GLOBALS.PROJECTS_ID_MAP):
                 # TODO: Bessere Zuordnung welches DB-Schema genutzt wird bauen ( Quick-FIX: -5 = - Anzahl der Oberkategorien )
                 if resA != None and int(resA) == 322:
                     sql_update = "UPDATE projects SET description = '  Sacharbeit abrechenbar' WHERE id = 322;"
@@ -473,7 +473,7 @@ def get_UK_and_UUK(conn, base_sql, category, params):
     for p in params:
         pnew.append(p)
     pnew.append(str(pid))
-        
+
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\npid = {pid}, pnew = {pnew}")
     sql_query = HCWR_GLOBALS.DB_QUERIES.tppbw_uuk
@@ -515,7 +515,10 @@ def get_UK_and_UUK(conn, base_sql, category, params):
                 debug(f"get_UK_and_UUK [contract] -> contract: {contract}")
             if not m and entry != None:
                 #info(f"contract = {contract}, line = {line}")
-                keyword_place = HCWR_GLOBALS.CFG.get("Database", "keyword_place")
+                if HCWR_GLOBALS.CFG.has_option("Database", "keyword_place"):
+                    keyword_place = HCWR_GLOBALS.CFG.get("Database", "keyword_place")
+                else:
+                    keyword_place = None
                 if HCWR_GLOBALS.PROC_NAME in "hcoh":
                     answer = "n"
                 else:
@@ -592,7 +595,7 @@ def initialize_contracts_db():
 
     os.makedirs(os.path.dirname(HCWR_GLOBALS.DB_KEYWORD_ID_PATH), exist_ok=True)
 
-    
+
     DBMS = importlib.import_module('sqlite3')
     DB_QUERIES = importlib.import_module('hcwr_sqlite_queries_sql')
     conn = DBMS.connect(HCWR_GLOBALS.DB_KEYWORD_ID_PATH)
@@ -742,11 +745,11 @@ def get_contract_id(entry, db_path=None):
 
         if not p:
             # Keyword gefunden, aber nicht an geforderter Position
-            info(f"Keyword [ " + 
-            Fore.GREEN + 
-            keyword + 
-            Fore.WHITE + 
-            " ] gefunden, aber nicht an definierter Stelle ( " + 
+            info(f"Keyword [ " +
+            Fore.GREEN +
+            keyword +
+            Fore.WHITE +
+            " ] gefunden, aber nicht an definierter Stelle ( " +
             Fore.YELLOW + keyword_place + Fore.WHITE +
             " ) laut config.")
             continue
@@ -759,20 +762,20 @@ def get_contract_id(entry, db_path=None):
     # FALL A: "*" / "any" / None  -> mehrere Treffer → Benutzer auswählen
     if not keyword_place or keyword_place.lower() in ("*", "any"):
         debug(f"FALL A found = {found}")
-    
+
         # WICHTIG: kein Regex bei None/"any" verwenden!
         if len(found) == 0:
             return None
-    
+
         if len(found) == 1:
             return found[0]
-    
+
         # mehrere -> Benutzer wählen lassen
         warning(f"  {entry}", " <- Mehrdeutiger Eintrag – mehrere Keywords gefunden")
         print("Folgende Keywords wurden gefunden:")
         for idx, f in enumerate(found, 1):
             print(f"[{idx}] contract_id: {f['contract_id']} | keyword: '{f['keyword']}' | task: {f['task']}")
-    
+
         prompt = f"Welche ID soll verwendet werden für '{entry}'? [1-{len(found)}]: "
         while True:
             try:
@@ -833,7 +836,7 @@ def delete_contract_keyword():
     if not os.path.exists(HCWR_GLOBALS.DB_KEYWORD_ID_PATH):
         info("Noch keine Contract-Keyword-Datenbank vorhanden.","Initialisiere DB")
         initialize_contracts_db()
-    
+
     show_contract_keywords()
 
     keyword = input("Welches Keyword soll gelöscht werden? ").strip()
@@ -920,7 +923,7 @@ def set_contract_keywords(keywords):
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         show_process_route()
         sys.exit(0)
-    
+
 def berechne_abwesenheiten(conn, year, week):
     """
     Berechnen Sie die Abwesenheitszeiten pro Kategorie.

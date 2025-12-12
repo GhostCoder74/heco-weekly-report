@@ -76,7 +76,7 @@ ABSENCE_HELP_TXT = """Set vacation, absense or other LOA days
       Krankengeldbezug                     |    KG
       Zeitkonto_Übertrag_vom_Vorjahr=<H:M> |    ZKÜ=<H:M>     # H=Hours, M=Minutes
       Zeitkonto_Abzug_Ausgezahlt=<H:M>     |    ZKA=<H:M>     # H=Hours, M=Minutes
-    
+
     EXAMPLE:
         -A Urlaub -B 2025-12-01[, -E 2025-12-05]
 
@@ -87,10 +87,10 @@ ABSENCE_HELP_TXT = """Set vacation, absense or other LOA days
 if PROC_NAME == "hcwr":
     parser = argparse.ArgumentParser(
         description="""\
-    hcwr "Heco Weekly Report" 
-    
+    hcwr "Heco Weekly Report"
+
     Creates WocheWeekly Summary From heco time.db or PostgreSQL database
-    
+
     Optionale Nutzung von Umgebungsvariablen:
         YEAR     	  – Jahreszahl (z.B. 2025), das selbe geht auch mit -y/--year
         WEEK oder KW  – Kalenderwoche, erlaubt sind Formate:
@@ -100,10 +100,10 @@ if PROC_NAME == "hcwr":
             WEEK=19/2025 oder KW=19/2025
             WEEK=19-2025 oder KW=19-2025
         Falls YEAR nicht gesetzt ist, wird das aktuelle Jahr angenommen.
-    
+
         GROUP         - Default Datei Berechtigungs-Gruppe,
                         das selbe wie bei -g/--group
-    
+
     Beispiel:
         YEAR=2025 WEEK=19 hcwr -n
     """,
@@ -112,7 +112,7 @@ if PROC_NAME == "hcwr":
 elif PROC_NAME == "hcoh":
     parser = argparse.ArgumentParser(
         description="""\
-    hcoh "Heco Over Hours" 
+    hcoh "Heco Over Hours"
     """,
         formatter_class=RawTextHelpFormatter
     )
@@ -179,7 +179,7 @@ if PROC_NAME in "hcwr":
     parser.add_argument("-D", "--delete", help="Delete vaction or absence EXAMPLE: -D -A -B 2025-12-01[, -E 2025-12-05]", action='store_true')
     parser.add_argument("-S", "--sum-times", help="Get sum of times!", action='store_true')
     parser.add_argument("-T", "--cat-time-totals-of", help="Get category time totals of 'CategoryA[,CategoryB,...]'")
-    parser.add_argument("-F", "--format", help="Format STRING")
+    #parser.add_argument("-F", "--format", help="Format STRING")
     parser.add_argument("-s", "--search", help="Search STRING")
     parser.add_argument("-z", "--zeiterfassung", type=str,  help="Formatting for zeiterfassung.txt EXANPLE: -z ckl,sua")
 
@@ -224,7 +224,7 @@ elif MODULE_DIR not in sys.path:
         from hcwr_dbms_mod import is_current_week_and_complete, berechne_abwesenheiten
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_utils_mod")
-        from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version
+        from hcwr_utils_mod import check_directory_exists, format_decimal, input_with_prefill, check_user_in_group, version, print_option_help
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_utils_mod")
         from hcwr_utils_mod import get_wday_diff, has_wday_absence, chgrp, is_valid_ymd, hours_to_hms, progress_bar, diff_calendar_weeks
@@ -249,22 +249,29 @@ elif MODULE_DIR not in sys.path:
         show_process_route()
 
 HCWR_GLOBALS.args = parser.parse_args()
+HCWR_GLOBALS.parser = parser
 
 fname = get_function_name()
 if HCWR_GLOBALS.PROC_NAME in "hcoh":
     HCWR_GLOBALS.args.verbose = True
 
 if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
-    info(HCWR_GLOBALS.PROC_NAME, Fore.BLUE + "for " + 
+    info(HCWR_GLOBALS.PROC_NAME, Fore.BLUE + "for " +
     Fore.WHITE + "W" + str(HCWR_GLOBALS.args.week), Fore.GREEN + "Running as" + Style.RESET_ALL)
 
 if os.path.expanduser(HCWR_GLOBALS.args.config) != os.path.expanduser(HCWR_GLOBALS.CFG_FILE):
-    debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
-    debug(f"HCWR_GLOBALS.CFG_FILE = {HCWR_GLOBALS.CFG_FILE}")
     HCWR_GLOBALS.CFG_FILE = os.path.expanduser(HCWR_GLOBALS.args.config)
     warning(f"Verwende manuel angegebene Config:", HCWR_GLOBALS.args.config, 'CONFIG INFO')
-    debug(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
-    debug(f"HCWR_GLOBALS.CFG_FILE = {HCWR_GLOBALS.CFG_FILE}")
+    # DBG_BREAK_POINT="hcwr:264"
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        wai = int(whereami()['line'])
+        if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+            info(f"HCWR_GLOBALS.args.config = {HCWR_GLOBALS.args.config}")
+            info(f"HCWR_GLOBALS.CFG_FILE = {HCWR_GLOBALS.CFG_FILE}")
+            prompt = "Enter für fortfahren oder N für Nein "
+            answer = input_with_prefill(prompt, "", '')
+            if answer in ("N", "n"):
+                show_process_route()
 
 if HCWR_GLOBALS.args.version:
     version()
@@ -308,19 +315,19 @@ if PROC_NAME == "hcwr":
         else:
             init_heco(HCWR_GLOBALS.args.init_heco)  # Mit KW
         show_process_route()
-    
+
     if HCWR_GLOBALS.args.add_contract_keyword:
         set_contract_keywords([])
         show_process_route()
-    
+
     if HCWR_GLOBALS.args.show_keywords:
         show_contract_keywords()
         show_process_route()
-    
+
     if HCWR_GLOBALS.args.delete_keyword:
         delete_contract_keyword()
         show_process_route()
-    
+
 now = datetime.now()
 if not HCWR_GLOBALS.args.week or not HCWR_GLOBALS.args.year:
     try:
@@ -343,7 +350,7 @@ except Exception as e:
 HCWR_GLOBALS.MONDAY = date.fromisocalendar(HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week, 1)
 HCWR_GLOBALS.SUNDAY = HCWR_GLOBALS.MONDAY + timedelta(days=6)
 
-# DBG_BREAK_POINT="hcwr:326"
+# DBG_BREAK_POINT="hcwr:352"
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -355,25 +362,40 @@ if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             show_process_route()
 
 if PROC_NAME == "hcwr":
-    if HCWR_GLOBALS.args.search and HCWR_GLOBALS.args.job_entries:
+    if HCWR_GLOBALS.args.zeiterfassung and HCWR_GLOBALS.args.json:
+        info(Fore.WHITE + "Option " + Fore.RED + "'-j/--json' " + Fore.WHITE + "ist nicht mit Option:",Fore.RED + "-z/--zeiterfassung" + Fore.WHITE + " erlaubt!")
+        print_option_help("-j")
+        print_option_help("-J")
+        print_option_help("-s")
+        print_option_help("-z")
+        show_process_route()
+
+    if HCWR_GLOBALS.args.zeiterfassung and not HCWR_GLOBALS.args.job_entries:
+        info(Fore.WHITE + "Option " + Fore.RED + "-z/--zeiterfassung " + Fore.WHITE + "ist ohne die Option:",Fore.RED + "-J/--job-entries" + Fore.WHITE + " nicht erlaubt!")
+        print_option_help("-J")
+        print_option_help("-s")
+        print_option_help("-z")
+        show_process_route()
+
+    if HCWR_GLOBALS.args.job_entries:
         fetch_and_display_entries()
         show_process_route()
     AB = HCWR_GLOBALS.args.absence
 else:
-    AB = None    
-    
+    AB = None
+
 if not AB:
     is_now, is_complete, missing = is_current_week_and_complete(HCWR_GLOBALS.args.database, HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
 
     if not is_complete and is_now and not HCWR_GLOBALS.args.configure:
         info("Es sind noch keine Zeiten erfasst, für :", ", ".join(missing))
         show_process_route()
-    
-    
+
+
     HCWR_GLOBALS.PROJECTS_ID_MAP = get_or_create_projects_id_map()
     HCWR_GLOBALS.WDAYHOURS_MAP  = get_or_create_wdayhours_map()
-    
-    # DBG_BREAK_POINT="hcwr:352"
+
+    # DBG_BREAK_POINT="hcwr:382"
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         wai = int(whereami()['line'])
         if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -385,7 +407,7 @@ if not AB:
             answer = input_with_prefill(prompt, "", '')
             if answer in ("N", "n"):
                 show_process_route()
-    
+
     if HCWR_GLOBALS.args.configure:
         configure_interactive()
         # Config Default Example Kommentare in HCWR_GLOBALS.CFG_FILE einsetzen:
@@ -397,7 +419,7 @@ weekhours, week = get_config()
 db_path = HCWR_GLOBALS.args.database
 conn = HCWR_GLOBALS.DBMS.connect(db_path)
 
-# DBG_BREAK_POINT="hcwr:376"
+# DBG_BREAK_POINT="hcwr:406"
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -411,8 +433,8 @@ if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
 
 if AB:
     # -----------------------------------------------------------------------
-    # Handling for: 
-    # ZKÜ, ZKA, Urlaub, AU, KG, Privat 
+    # Handling for:
+    # ZKÜ, ZKA, Urlaub, AU, KG, Privat
     Absence = HCWR_GLOBALS.args.absence
     decimal_match = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=([0-9]{1,2}[.,][0-9])", Absence)
     if decimal_match:
@@ -422,7 +444,7 @@ if AB:
     failedmatch = re.fullmatch(r"([A-Za-zÄÖÜäöü]+)=?", Absence)
     H = None  # Hours for ZKÜ or ZKA
     M = None  # Minutes for ZKÜ or ZKA
-    # DBG_BREAK_POINT="hcwr:401"
+    # DBG_BREAK_POINT="hcwr:431"
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         wai = int(whereami()['line'])
         if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -435,7 +457,7 @@ if AB:
             answer = input_with_prefill(prompt, "", '')
             if answer in ("N", "n"):
                 show_process_route()
-    
+
     if not Absence in "PH VAC AU KG":
         if match:
             Absence, H, M = match.group(1), match.group(2), match.group(3)
@@ -443,7 +465,7 @@ if AB:
             Absence = failedmatch.group(1)    # z.B. "ZKÜ" oder "ZKA"
             warning(f"Du hast folgende Option gesetzt: -A OHNE", f"{Absence}=HH:MM", "Error")
             show_process_route()
-    
+
     if (Absence and HCWR_GLOBALS.args.start_day) or (Absence in "AU ZKÜ ZKA PRIV" and H and M):
         start_date = HCWR_GLOBALS.args.start_day
         MODE = HCWR_GLOBALS.args.delete
@@ -455,33 +477,33 @@ if AB:
                 date_obj = datetime.now()
                 year = date_obj.year
                 target_date = f"{year}-01-01"
-    
+
                 # korrekt:
                 target_date_obj = datetime.strptime(target_date, "%Y-%m-%d")
-    
-                if (date_obj.year == target_date_obj.year and 
-                    date_obj.month != target_date_obj.month and 
+
+                if (date_obj.year == target_date_obj.year and
+                    date_obj.month != target_date_obj.month and
                     date_obj >= target_date_obj):
                     warning(f"Du hast vor ZKÜ rückwirkend zu buchen, denn " + Fore.YELLOW + Style.BRIGHT + f"{target_date}" + Fore.RED, " liegt in der Vergangenheit!")
                     warning(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.RED + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.RED + f"{msgZ}!")
                 else:
                     info(f"Du hast die Option -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.WHITE + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.WHITE + f"{msgZ}!")
-                
+
             else:
                 date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
                 warning(f"Du hast die Option -B mit -A {Absence} übergeben,", f"das wird " + Fore.YELLOW + Style.BRIGHT + f"ZKÜ={H}:{M} " + Fore.RED + "für den " + Fore.YELLOW + f"{date_obj.year}-01-01 " + Fore.RED + f"{msgZ}!")
-    
+
             prompt = (f"Soll die Aktion nun durchgeführt werden? [J/n]: ")
             answer = input_with_prefill(prompt, "", "").strip().lower()
             if not answer in ("", "j", "ja", "y", "yes"):
                 show_process_route()
             else:
                 print()
-    
+
             year = date_obj.year
             start_date = f"{year}-01-01"
-    
-            # DBG_BREAK_POINT="hcwr:460"
+
+            # DBG_BREAK_POINT="hcwr:490"
             if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
                 wai = int(whereami()['line'])
                 if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -501,7 +523,7 @@ if AB:
             if stop_date:
                 stop_date = None
                 warning(f"It's not allowed to set option -E with", f"-A {Absence}, it will be ignored!")
-    
+
         for p, values in HCWR_GLOBALS.INTERN_PROJEKT_ID_MAP.items():
             if Absence == p:
                 PNAME = p
@@ -509,16 +531,16 @@ if AB:
             elif Absence == values[2]:
                 PNAME = p
                 break
-    
+
         if Absence in "AU ZKA PRIV" and H and M: # start_date MUST be set for AU, ZKA, PRIV Entry
             if start_date:
                 next_start_time = start_date
             else:
-                next_start_time = datetime.today().strftime('%Y-%m-%d') 
+                next_start_time = datetime.today().strftime('%Y-%m-%d')
             ask_date = next_start_time
             if Absence in "AU PRIV":
                 result = get_last_entry(conn)
-                next_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S') 
+                next_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
                 fld = "stop_time"
                 if MODE:
                     fld = "start_time"
@@ -527,10 +549,10 @@ if AB:
                         next_start_time = result[fld].split("+")[0]
                     else:
                         next_start_time = result[fld]
-    
+
                 info(f"{Absence} Buchung ab :" ,Fore.YELLOW + next_start_time)
-                
-            # DBG_BREAK_POINT="hcwr:509"
+
+            # DBG_BREAK_POINT="hcwr:539"
             if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
                 wai = int(whereami()['line'])
                 if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -555,18 +577,18 @@ if AB:
                 show_process_route()
             else:
                 print()
-    
+
         if not is_valid_ymd(start_date) and not Absence in "AU ZKA PRIV":
             warning(f"Wrong date format: ", start_date , "ERROR")
             show_process_route()
-            
+
         if stop_date:
             if not is_valid_ymd(stop_date):
                 warning(f"Wrong date format: ", stop_date , "ERROR")
                 show_process_route()
-    
+
         result = insert_LOA_entries(conn, start_date, PNAME, stop_date, MODE, H, M)
-        # DBG_BREAK_POINT="hcwr:545"
+        # DBG_BREAK_POINT="hcwr:575"
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             wai = int(whereami()['line'])
             if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -580,7 +602,7 @@ if AB:
                 info(f"result = {result}")
 
         show_process_route()
-    
+
 # -----------------------------------------------------------------------
 
 myname = extract_name()
@@ -613,7 +635,7 @@ if HCWR_GLOBALS.args.week and HCWR_GLOBALS.args.year:
     sql = HCWR_GLOBALS.DB_QUERIES.total_per_project_by_week
     params.extend([HCWR_GLOBALS.MONDAY.strftime("%Y-%m-%d"), HCWR_GLOBALS.SUNDAY.strftime("%Y-%m-%d")])
 
-# DBG_BREAK_POINT="hcwr:592"
+# DBG_BREAK_POINT="hcwr:622"
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -646,7 +668,7 @@ if int(HCWR_GLOBALS.DBG_LEVEL) == 2:
     debug(f"rows: {rows}")
 
 PBAR_WEEKS = diff_calendar_weeks(HCWR_GLOBALS.CFG.get('Onboarding', 'firstday'), HCWR_GLOBALS.args.year, HCWR_GLOBALS.args.week)
-# DBG_BREAK_POINT="hcwr:625"
+# DBG_BREAK_POINT="hcwr:655"
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
@@ -676,7 +698,7 @@ for description, duration in rows:
         TOTAL_SUM += duration
     is_sub = description.startswith("  ")
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        # DBG_BREAK_POINT="hcwr:655"
+        # DBG_BREAK_POINT="hcwr:685"
         wai = int(whereami()['line'])
         if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
             info(f"is_sub = {is_sub}, description: {description}, duration: {duration}")
@@ -687,7 +709,7 @@ for description, duration in rows:
                 show_process_route()
     if is_sub:
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            # DBG_BREAK_POINT="hcwr:666"
+            # DBG_BREAK_POINT="hcwr:696"
             wai = int(whereami()['line'])
             if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                 info(f"IS SUB -> description: {description}")
@@ -713,7 +735,7 @@ for description, duration in rows:
                 "  Sacharbeit andere*" == description):
             uk_entries = get_UK_and_UUK(conn, sql, description, params)
             if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-                # DBG_BREAK_POINT="hcwr:692"
+                # DBG_BREAK_POINT="hcwr:722"
                 wai = int(whereami()['line'])
                 if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                     info(f"IS Auftrag UUK -> description: {description}")
@@ -728,7 +750,7 @@ for description, duration in rows:
                 uuk = row['uuk']
                 entry_duration = row['duration']
                 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-                    # DBG_BREAK_POINT="hcwr:707"
+                    # DBG_BREAK_POINT="hcwr:737"
                     wai = int(whereami()['line'])
                     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                         info(f"IS Auftrag UUK -> description: {description}\n-------------------\nresult = {result}\n-------------------")
@@ -765,7 +787,7 @@ for description, duration in rows:
         if description == "Auftrag#":
             uk_entries = get_UK_and_UUK(conn, sql, description, params)
             if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-                # DBG_BREAK_POINT="hcwr:744"
+                # DBG_BREAK_POINT="hcwr:774"
                 wai = int(whereami()['line'])
                 if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                     info(f"IS Auftrag UUK -> description: {description}")
@@ -785,7 +807,7 @@ for description, duration in rows:
                 progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
                 HCWR_GLOBALS.PBAR_VAL += 1
                 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-                    # DBG_BREAK_POINT="hcwr:764"
+                    # DBG_BREAK_POINT="hcwr:793"
                     wai = int(whereami()['line'])
                     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                         info(f"description: {entry_description}")
@@ -812,7 +834,7 @@ for description, duration in rows:
         sub_duration = 0
         result.append(current_parent)
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            # DBG_BREAK_POINT="hcwr:791"
+            # DBG_BREAK_POINT="hcwr:821"
             wai = int(whereami()['line'])
             if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
                 info(f"current_parent: {current_parent}")
@@ -827,7 +849,7 @@ result.reverse()
 result_old = result
 result = merge_results(result)
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:806"
+    # DBG_BREAK_POINT="hcwr:836"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"result_old: {result_old}")
@@ -860,7 +882,7 @@ wdayhours = {
 }
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:839"
+    # DBG_BREAK_POINT="hcwr:869"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"wdays: {wdays}")
@@ -894,7 +916,7 @@ if abwesenheiten.get("zk_minus"):
     zk_minus = abwesenheiten["zk_minus"]
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:873"
+    # DBG_BREAK_POINT="hcwr:903"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"abwesenheiten = {abwesenheiten}")
@@ -941,7 +963,7 @@ progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 HCWR_GLOBALS.PBAR_VAL += 1
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:920"
+    # DBG_BREAK_POINT="hcwr:950"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"HCWR_GLOBALS.SIGN = {HCWR_GLOBALS.SIGN}")
@@ -957,7 +979,7 @@ if int(WORK_HOURS) + int(krank) + int(urlaub) + int(feiertage) < float(HCWR_GLOB
     kw_hours_diff = float(HCWR_GLOBALS.CONTRACT_HOURS) * 3600 - WORK_HOURS
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:936"
+    # DBG_BREAK_POINT="hcwr:966"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"kw_hours_diff: {kw_hours_diff}")
@@ -993,7 +1015,7 @@ if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
     info(f" Mo: {format_decimal(mo/3600)}, Di: {format_decimal(di/3600)}, Mi: {format_decimal(mi/3600)}, Do: {format_decimal(do/3600)}, Fr: {format_decimal(fr/3600)}, Sa: {format_decimal(sa/3600)}, So: {format_decimal(so/3600)}, Std KW = {format_decimal(kw_total/3600)}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:972"
+    # DBG_BREAK_POINT="hcwr:1002"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")
@@ -1030,8 +1052,8 @@ if HCWR_GLOBALS.PROC_NAME in "hcoh":
         HO = Fore.YELLOW
     else:
         HO = Fore.MAGENTA
-    info(HO + f"  {format_decimal(kw_old_overhours/3600)} " + 
-    SC + f"{HCWR_GLOBALS.SIGN} {format_decimal(kw_overhours_add/3600)}" + 
+    info(HO + f"  {format_decimal(kw_old_overhours/3600)} " +
+    SC + f"{HCWR_GLOBALS.SIGN} {format_decimal(kw_overhours_add/3600)}" +
     Fore.WHITE + f" = " + IC + f"{format_decimal(kw_stundenkonto/3600)} {GL}"+ Style.RESET_ALL, "", IL + "Stundenkonto")
     show_process_route()
 

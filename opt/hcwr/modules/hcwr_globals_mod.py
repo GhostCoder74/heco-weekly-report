@@ -1,14 +1,14 @@
 # -----------------------------------------------------------------------------------------
 # Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter
-# File:           hcwr_globals_mod.py 
+# File:           hcwr_globals_mod.py
 # Authors:        Christian Klose <cklose@intevation.de>
 #                 Raimund Renkert <rrenkert@intevation.de>
 # GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)
 # Copyright (c) 2024-2026 by Intevation GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.3
-# 
+# File version:   1.0.4
+#
 # This file is part of "hcwr - heco Weekly Report"
 # Do not remove this header.
 # Wochenfazit URL:
@@ -34,7 +34,7 @@ locale.setlocale(locale.LC_ALL, '')
 
 # Setze Pfad, wenn sqlite3_queries im Unterverzeichnis liegt (z. B. ./lib/)
 
-    
+
 # Setze Pfad, wenn sqlite3_queries im Unterverzeichnis liegt (z. B. ./lib/)
 #script_dir = os.path.dirname(os.path.abspath(__file__))
 #sys.path.insert(0, script_dir)
@@ -77,7 +77,7 @@ class myGlobals:
     SSH_HOST = "hq"
     SSH_HOSTNAME = "euarne.intevation.de"
     SSH_IDENTITY_FILE = "~/.ssh/id_rsa"
-    
+
     # Default Konstante
     CFG = configparser.ConfigParser()
     CFG.optionxform = str
@@ -105,9 +105,9 @@ class myGlobals:
         "sql_template": "SQL_TEMPLATE",
         "wf_check_path": "WF_CHECK_PATH",
     }
-    # Tagabweichungstolleranz von ±20% 
-    WD_TOLERANCE = float(0.2) 
-    
+    # Tagabweichungstolleranz von ±20%
+    WD_TOLERANCE = float(0.2)
+
     # Ausfüll Erinnerungstext:
     REMINDER_TXT = "* Bitte noch ausfüllen !!!"
 
@@ -192,7 +192,15 @@ class myGlobals:
     # Pattern
     CONTRACT_PATTERN = re.compile(r"^([^#:]+)[ ]+#([1-9][0-9]{0,4}):$")
     # SEARCH_EXCLUDE for function "my_tasks" in ../modules/hcwr_tasks_mod.py
-    SEARCH_EXCLUDE = "\!C=Temp|\!C=Feiertag|\!C=Urlaub|\!C=Krank*|\!C=Zeitkonto*|\!C=Privat"
+    SEARCH_EXCLUDE = "!C=Temp&!C=Feiertag&!C=Urlaub&!C=Krank*&!C=Zeitkonto*&!C=Privat"
+    # MY_TASK_EXCLUDE for function "my_tasks" in ../modules/hcwr_tasks_mod.py
+    # Can be set in ~/.heco/hcwr.conf with config option:
+    # my_task_ex_or_include = "\!SearchString1|\!SearchString2"
+    # "\!string" = exclude string
+    # | = delimiter
+    # Example: "stringA*|*stringB&!stringC*" = include "stringABCD" & "mystringB" and exclude "stringCDEFG"
+    # also avaible with commandline option: -s/--search  "stringA*|*stringB&!stringC*"
+    MY_TASK_EX_OR_INCLUDE = ""
     # Prüft, ob ein String eine Uhrzeit im Format HH:MM oder HH:MM:SS enthält:
     REGEX_TIME = re.compile(r"\b([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\b")
 
@@ -242,7 +250,7 @@ class myGlobals:
             'Feiertag'                      :[2,'000','PH'  , 'Feiertag'],          # Public Holiday (Gesetzlicher Feiertag)
             'Urlaub'                        :[3,'001','VAC' , 'Urlaub'],            # Vacation       (Urlaubstag)
             'Krank'                         :[4,'002','AU'  , 'AU'],                # AU             (Arbeitsunfähigkeit)
-            'Krankengeldbezug'              :[5,'003','KG'  , 'Krankengeldbezug'],   
+            'Krankengeldbezug'              :[5,'003','KG'  , 'Krankengeldbezug'],
             'Zeitkonto Übertrag vom Vorjahr':[6,'004','ZKÜ' , 'Zeitkonto Übertrag'],
             'Privat'                        :[7,'005','PRIV', 'Privat'],
             'Zeitkonto Abzug/Ausgezahlt'    :[8,'006','ZKA' , 'Zeitkonto Abzug']

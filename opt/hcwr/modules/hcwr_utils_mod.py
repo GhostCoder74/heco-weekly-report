@@ -1,19 +1,19 @@
-# -----------------------------------------------------------------------------------------   
-# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter            
+# -----------------------------------------------------------------------------------------
+# Project:        "hcwr - heco Weekly Report" for Wochenfazit from Bernhard Reiter
 # File:           hcwr_utils_mod.py
-# Authors:        Christian Klose <cklose@intevation.de>                                      
-#                 Raimund Renkert <rrenkert@intevation.de>                                    
-# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)           
-# Copyright (c) 2024-2026 by Intevation GmbH                                                  
-# SPDX-License-Identifier: GPL-2.0-or-later                                                   
+# Authors:        Christian Klose <cklose@intevation.de>
+#                 Raimund Renkert <rrenkert@intevation.de>
+# GitHub:         https://github.com/GhostCoder74/heco-weekly-report (GhostCoder74)
+# Copyright (c) 2024-2026 by Intevation GmbH
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
-# File version:   1.0.2
-# 
-# This file is part of "hcwr - heco Weekly Report"                                            
-# Do not remove this header.                                                                  
-# Wochenfazit URL:                                                                            
-# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit    
-# Header added by https://github.com/GhostCoder74/Set-Project-Headers                         
+# File version:   1.0.3
+#
+# This file is part of "hcwr - heco Weekly Report"
+# Do not remove this header.
+# Wochenfazit URL:
+# https://heptapod.host/intevation/getan/-/blob/branch/default/getan/templates/wochenfazit
+# Header added by https://github.com/GhostCoder74/Set-Project-Headers
 # -----------------------------------------------------------------------------------------
 import readline
 import shutil
@@ -98,7 +98,7 @@ def add_decimal_hours(datetime_str, dec_hours):
     minutes = int((h - hours) * 60)      # z.B. 0
 
     return dt + timedelta(hours=hours, minutes=minutes)
-    
+
 def is_valid_ymd(date_str):
     """
     Prüft, ob date_str exakt dem Format YYYY-MM-DD entspricht.
@@ -107,7 +107,7 @@ def is_valid_ymd(date_str):
     fname = get_function_name()
     if not isinstance(date_str, str):
         return False
-    
+
     try:
         # strptime akzeptiert nur exakte Formate
         parsed = datetime.strptime(date_str, "%Y-%m-%d")
@@ -308,7 +308,7 @@ def progress_bar(pos, maxval, msg=""):
     if pct > 100:
         pct = 100
     percent_str = f"{pct:6.2f}% "  # z.B. " 45.30% "
-    
+
     spinner = next(SPINNER)
 
     # Reservierte Breite
@@ -340,16 +340,16 @@ def progress_bar(pos, maxval, msg=""):
 
     sys.stdout.write(out)
     sys.stdout.flush()
-        
+
 def diff_calendar_weeks(date_str: str, target_year: int, target_week: int) -> int:
     """
     Berechnet die Differenz (in Kalenderwochen) zwischen einem Datum
     und einer Ziel-Kalenderwoche (ISO-Week).
-    
+
     date_str:  'YYYY-MM-DD'
     target_year: int (z.B. 2025)
     target_week: int (z.B. 47)
-    
+
     Rückgabe: Anzahl der Wochen (positiv/negativ)
     """
     fname = get_function_name()
@@ -365,7 +365,7 @@ def diff_calendar_weeks(date_str: str, target_year: int, target_week: int) -> in
         # ISO-Kalender: Woche 1 beginnt Montag der Woche mit dem 4. Januar
         return y * 53 + w  # 53 reicht als maximaler Wochenwert (ISO hat max. 53)
 
-    current_index = absolute_week_index(year, week) 
+    current_index = absolute_week_index(year, week)
     target_index  = absolute_week_index(target_year, target_week)
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
@@ -373,3 +373,11 @@ def diff_calendar_weeks(date_str: str, target_year: int, target_week: int) -> in
         info(f"result = {(target_index - current_index)}")
         sys.exit(0)
     return target_index - current_index
+
+def print_option_help(option_string):
+    for action in HCWR_GLOBALS.parser._actions:
+        if option_string in action.option_strings:
+            print(" ".join(action.option_strings))
+            print("    " + action.help)
+            return
+    print(f"Option {option_string} nicht gefunden.")
