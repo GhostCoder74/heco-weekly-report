@@ -191,13 +191,25 @@ def get_or_create_wdayhours_map():
         default_hours = 8.0
         if day not in HCWR_GLOBALS.CFG['Workdays']:
             while True:
-                if day in "Sa So":
+                if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                    info(f"day = {day}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
+                if day in ["Sa", "So"]:
                     default_hours = 0.0
                     value = default_hours
                 else:
                     prompt = (f"Wieviele Stunden arbeiten Sie am {day}? (z. B. 8.0): ")
                     value = input_with_prefill(prompt, str(default_hours)).strip()
-                if not value:
+                if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                    info(f"value = {value}")
+                    prompt = "Enter für fortfahren oder N für Nein "
+                    answer = input_with_prefill(prompt, "", '')
+                    if answer in ("N", "n"):
+                        show_process_route()
+                if value == None:
                     print("Eingabe darf nicht leer sein.")
                     continue
                 try:
@@ -216,7 +228,6 @@ def get_or_create_wdayhours_map():
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"{fname}:\nwdayhours_map = {wdayhours_map}")
         show_process_route()
-        sys.exit(0)
 
     return wdayhours_map
 
