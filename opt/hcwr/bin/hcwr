@@ -71,14 +71,14 @@ install_custom_module_finder()
 # Parse command-line arguments
 ABSENCE_HELP_TXT = """Set vacation, absense or other LOA days
     VALUES for -A                          |  SHORT VALUES for -A
-      Urlaub                               |    PH
+      Urlaub                               |    VAC
       Krank                                |    AU
       Krankengeldbezug                     |    KG
       Zeitkonto_Übertrag_vom_Vorjahr=<H:M> |    ZKÜ=<H:M>     # H=Hours, M=Minutes
       Zeitkonto_Abzug_Ausgezahlt=<H:M>     |    ZKA=<H:M>     # H=Hours, M=Minutes
 
     EXAMPLE:
-        -A Urlaub -B 2025-12-01[, -E 2025-12-05]
+        -A VAC -B 2025-12-01[, -E 2025-12-05]
 
     Short option for Urlaub(Public Holyday):
         -A PH -B 2025-12-01[, -E 2025-12-05]
