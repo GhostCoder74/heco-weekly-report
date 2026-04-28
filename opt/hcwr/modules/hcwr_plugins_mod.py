@@ -74,11 +74,20 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
         stop_ts = add_decimal_hours(start_ts, wdayhours)
         desc     = f"Feiertag: {name}"
 
+        cursor.execute(exists_sql, (start_ts, project_id))
+        row = cursor.fetchone()
+        
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"weeks = {weeks}")
-            info(f"sql={debug_sql(insert_sql, (project_id, start_ts, stop_ts, desc))}")
+            info(f"sql={debug_sql(exists_sql, (start_ts, project_id))}")
+            info(f"row = {row}")
+            if not row:
+                info(f"sql={debug_sql(insert_sql, (project_id, start_ts, stop_ts, desc))}")
+            else:
+                info(f"No Insert for {start_ts}, because exists!")
         else:
-            cursor.execute(insert_sql, (project_id, start_ts, stop_ts, desc))
+            if not row:
+                cursor.execute(insert_sql, (project_id, start_ts, stop_ts, desc))
 
     # Feiertage schreiben
     for (date_str, name) in weeks["current_week"]:

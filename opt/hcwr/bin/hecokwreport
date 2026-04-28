@@ -1,0 +1,2382 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# The VERSION variable is important for version check
+VERSION = "1.0.22"
+
+#TODO:
+# Legend: done = done, wip = Work in progress, tip = testing in progress
+#
+# [wip ] * Bessere Zuordnung welches DB-Schema genutzt wird bauen ( Quick-FIX: -5 = - Anzahl der Oberkategorien )
+# [done] * SPDX kompatible license header
+# [    ] * README
+# [tip ] * Konstanten definieren (pfade etc)
+# [wip ] * Die konstanten Pfade in Config auslagern
+# [wip ]   * Für Laptop User Pfade in Config setzbar machen, um Intevations unabhängig arbeiten zu können
+# [    ] * db connection in zentrale funktion auslagern
+# [wip ] * SQL statements extrahieren und im idealfall in eigene datei als
+#          konstanten auslagern
+# [    ] * GUI-Fläche bzw. API dafür, damit User, die nicht Konsolen affin
+#          sind es leichter haben
+# [    ] * Interaktive Abfrage der überstunden der vorwoche aus vorheriger
+#          DB / bzw. vorjahr, wenn overhours nix findet [ZKÜ von (Vorjahr/DB KWxx -1]
+# [wip ] * Fullname des User in die config aufnehmen, wenn EMAIL nicht gesetzt,
+#          dann Name aus Config nutzen
+# [    ] * overhours & hkwreport in hecokwreport inplementieren
+# [    ] * DB Abstraction Layer
+# [    ] * SQL oder Conifg Swtich + Keyword-Table in Config nutzbar machen
+# [wip ] * keyword_contract_id DB einbauen +
+# [wip ] * Was ist wenn 2 keywords bei 2 verscheidene Contract IDs liefert Abfangpunkt einbauen
+# [wip ] * Per config option oder arg eine Uniq-Liste der Tätigkeiten unter "Habe ich für uns mit erreicht" einfügen wenn dies gesetzt wurde.
+
+"""
+hecokwreport – Wochenbericht-Erzeugung aus heco time.db
+
+Dieses Skript analysiert Zeitbuchungen, berechnet Wochenstunden,
+Feiertage, Urlaub und erstellt einen Wochenbericht für Intevation.
+"""
+
+import importlib
+import readline
+import shutil
+import subprocess
+import tempfile
+import locale
+import re
+import os
+import grp
+import getpass
+import argparse
+from argparse import RawTextHelpFormatter
+import configparser
+import sys
+from datetime import datetime, date, timedelta
+from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import inspect
+import colorama
+from colorama import Fore, Style
+import time
+
+# Default Konstante
+config = configparser.ConfigParser()
+config.optionxform = str
+
+# Globale Standardwerte für Host "hq"
+SSH_HOST = "hq"
+SSH_HOSTNAME = "euarne.intevation.de"
+SSH_IDENTITY_FILE = "~/.ssh/id_rsa"
+
+# Default DB Standardwerte
+dbms = importlib.import_module('sqlite3')
+queries = importlib.import_module('sqlite_queries')
+
+# Default Konstanter Pfad zur Config des Users
+config_file = os.path.expanduser("~/.config/hkwreport.conf")
+old_config_path = os.path.expanduser("~/.config/hkwdreport.conf")
+
+# Default Intevation Konstanten:
+# werden durch lokale Config des User neu gesetzt falls diese in der Config stehen, siehe get_config
+db_keyword_id_path = os.path.expanduser("~/.heco/keyword_id.db")
+kw_report_base_dir = "/home/intevation/doc/Wochenberichte" # Wird für 'kw_report_dir' gebraucht, siehe weiter unten
+sql_template = "/home/projects/Intern/hecokwreport.hg/template/heco.projects.sql"
+default_sql_template = sql_template
+wf_check_path = "/home/activities/vorlagen/werkbank-wochenfazit-2024/2024-w46/wochenfazit.py"
+default_wf_check_path = wf_check_path
+
+# Tagabweichungstolleranz von ±20% 
+WD_TOLERANCE = float(0.2) 
+
+# Ausfüll Erinnerungstext:
+REMINDER_TXT = "* Bitte noch ausfüllen !!!"
+
+# Mapping der Config-Schlüssel zu globalen Variablennamen
+CONFIG_KEY_TO_GLOBAL_VAR = {
+    "db_keyword_id_path": "db_keyword_id_path",
+    "kw_report_base_dir": "kw_report_base_dir",
+    "sql_template": "sql_template",
+    "wf_check_path": "wf_check_path",
+}
+
+# Default Config Example Kommentarem, welche in die Config eingetragen werden
+CONFIG_EXAMPLES = {
+    "General": [
+        "# Examples:",
+        "# Wöchentliche Sollarbeitszeit in Stunden",
+        "# weekhours = 40\n#",
+        "# Basisverzeichnis für Wochenberichte",
+        "# Default: /home/intevation/doc/Wochenberichte\n#",
+        "# kw_report_base_dir = /home/intevation/doc/Wochenberichte\n#",
+        "# Pfad zur SQL-Vorlage",
+        "# Default: /home/projects/Intern/hecokwreport.hg/template/heco.projects.sql\n#",
+        "# sql_template = /home/projects/Intern/hecokwreport.hg/template/heco.projects.sql\n#",
+        "# Pfad zur Workflow-Checkdatei",
+        "# Default: /home/activities/vorlagen/werkbank-wochenfazit-2024/2024-w46/wochenfazit.py\n#",
+        "# wf_check_path = /home/activities/vorlagen/werkbank-wochenfazit-2024/2024-w46/wochenfazit.py\n#",
+        "# Ob UUK-Einträge angezeigt werden sollen (none/true/false)",
+        "# Default: None or True = enabled, False = disabled",
+        "# show_uuk = True\n#\n",
+    ],
+    "Database": [
+        "# Examples:",
+        "# Unterstützte Datenbanken",
+        "# Default: sqliste3\n#",
+        "# dbms = sqlite3\n#",
+        "# Pfad zur SQLite-Datenbankdatei (nur relevant, wenn dbms = sqlite3)",
+        "# Default: ~/.heco/time.db\n#",
+        "# dbpath = ~/.heco/time.db\n#",
+        "# Falls dbms = pg: weitere Verbindungsparameter könnten hier ergänzt werden",
+        "# dbpath = postgresql://heco:heco@localhost:54322/heco\n#",
+        "# Pfad zur Datenbank mit Keyword-IDs",
+        "# Default: ~/.heco/keyword_id.db\n#",
+        "# db_keyword_id_path = ~/.heco/keyword_id.db\n#",
+        "# Wo im String soll das Keyword erwartet werden?",
+        "# Values: Am Anfang des Strings = 1, beginning, first\n# oder irgendwo: None, *, any",
+        "# Default: None\n#",
+        "# keyword_place = *\n#\n"
+    ],
+    "Workdays": [
+        "# Examples:",
+        "# Arbeitstage mit zugehörigen Stundenwerten (z. B. für reduzierte Arbeitszeiten)",
+        "# Default: Mo-Fr = 8.0\n#",
+        "# Mo = 8.0",
+        "# Di = 8.0",
+        "# Mi = 8.0",
+        "# Do = 8.0",
+        "# Fr = 8.0\n#\n"
+    ],
+    "Onboarding": [
+        "# Example:",
+        "# Erster Arbeitstag im Format YYYY-MM-DD",
+        "# firstday = 2023-01-02\n#\n"
+    ]
+}
+
+def version():
+    """
+    Gibt Versionsinformationen zum hecokwreport-Skript aus.
+
+    Die Ausgabe enthält:
+    - Die aktuelle Versionsnummer (aus der globalen VERSION-Variable)
+    - Copyright-Hinweis
+    - Lizenzinformation (GNU GPL >= v2)
+    - Autorenangabe
+    - Beschreibung des Skripts und seiner Abhängigkeiten
+
+    Die Ausgabe erfolgt direkt auf die Standardausgabe.
+    """
+
+    print(f"""\
+Version: {VERSION}
+Copyright (C) 2025 by Intevation GmbH
+This program is free software under the GNU GPL (>=v2)
+Authors:
+  Christian Klose <cklose@intevation.de>
+About:
+  hecokwreport for weekly report generation from heco time.db
+  in conjunction with hkwdreport, overhours
+  Python3 Based Executable Script
+""")
+
+# Set locale for decimal formatting
+locale.setlocale(locale.LC_ALL, '')
+DECIMAL_POINT = locale.localeconv()['decimal_point']
+# Get Env variables:
+GROUP = os.environ.get('GROUP')
+DATABASE = os.environ.get('DATABASE')
+# Debugging:
+DBG_LEVEL = os.environ.get('DBG_LEVEL')
+if not DBG_LEVEL:
+    DBG_LEVEL = 0
+
+# Mapping of keys to projects
+mapping = {
+    "temp": ["Temp"],
+    "feiertag": ["Feiertag"],
+    "urlaub": ["Urlaub"],
+    "krank": ["Krank"],
+    "zk_minus": ["Zeitkonto Abzug/Ausgezahlt"],
+    "privat": ["Privat"],
+    "zkue": ["Zeitkonto Übertrag vom Vorjahr"]
+}
+
+
+# Default Setting for projects_id_map
+projects_id_map = {
+        "Marketing": 310,
+        "Akquise#": 311,
+        "Andere Organisationen": 312,
+        "Allgemein und Streut*": 313,
+        "Auftrag#": 320,
+        "Organisation": 321,
+        "Sacharbeit abrechenbar": 322,
+        "Sacharbeit andere*": 323,
+        "Selbstorganisation": 330,
+        "Qualifikation": 331,
+        "regel. Arbeitsorganisation*": 332,
+        "Unterstützung": 340,
+        "Buchhaltung": 341,
+        "IT-Infrastruktur": 342,
+        "Büro": 343,
+        "Personalmarketing und -entwicklung": 344,
+        "Organisieren und verbessern*": 345,
+        "Leitung": 350,
+        "Menschen fördern": 351,
+        "Unternehmen*": 352
+}
+
+# CONFIG_EXAMPLES um Section ProjectIDs erweitern:
+if "ProjectIDs" not in CONFIG_EXAMPLES:
+    CONFIG_EXAMPLES['ProjectIDs'] = ["# Defaults:"]
+    for lbl, pid in projects_id_map.items():
+        CONFIG_EXAMPLES['ProjectIDs'].append(f"# {lbl} = {pid}")
+
+    CONFIG_EXAMPLES['ProjectIDs'].append(f"# \n")
+
+# Contract Pattern
+contract_pattern = re.compile(r"^([^#:]+)[ ]+#([1-9][0-9]{0,4}):$")
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(
+    description="""\
+hecokwreport – Wochenbericht-Erzeugung aus heco time.db
+
+Optionale Nutzung von Umgebungsvariablen:
+    YEAR     	  – Jahreszahl (z.B. 2025), das selbe geht auch mit -y/--year
+    WEEK oder KW  – Kalenderwoche, erlaubt sind Formate:
+        WEEK=19      oder KW=19
+        WEEK=2025/19 oder KW=2025/19
+        WEEK=2025-19 oder KW=2025-19
+        WEEK=19/2025 oder KW=19/2025
+        WEEK=19-2025 oder KW=19-2025
+    Falls YEAR nicht gesetzt ist, wird das aktuelle Jahr angenommen.
+
+    GROUP         - Default Datei Berechtigungs-Gruppe,
+                    das selbe wie bei -g/--group
+
+Beispiel:
+    YEAR=2025 WEEK=19 hecokwreport -n
+""",
+    formatter_class=RawTextHelpFormatter
+)
+parser.add_argument('-w', '-kw', '--week', type=int, help='Kalendar Woche (1-53)')
+parser.add_argument('-y', '--year', type=int, help='Jahr (e.g., 2024)')
+parser.add_argument(
+    '-d', '--database',
+    type=str,
+    help='Pfad zur SQLite-Datenbank (optional)',
+    default=os.path.expanduser("~/.heco/time.db")
+)
+parser.add_argument(
+    '-g', '--group',
+    type=str,
+    help='Default User Group',
+    default="intevation"
+)
+parser.add_argument(
+    '-o', '--output-file',
+    type=str, help='Pfad zur Zieldatei'
+)
+parser.add_argument(
+    "-ih", "--init-heco", nargs="?", const=True, metavar="KW",
+    help="Initialisiert eine heco time.db und importiert Projektstruktur. Optional mit Kalenderwoche (z. B. 27)"
+)
+parser.add_argument(
+    "-c", "--configure", action="store_true",
+    help="Konfiguration interaktiv bearbeiten"
+)
+parser.add_argument(
+    "-ak", "--add-contract-keyword",
+    action="store_true",
+    help="Contract ID und zugehörige Schlagwörter interaktiv erfassen"
+)
+parser.add_argument('-dk', '--delete-keyword', action='store_true', help='Ein Contract-Keyword aus der Datenbank löschen')
+parser.add_argument(
+    "-sk", "--show-keywords",
+    action="store_true",
+    help="Zeigt alle gespeicherten Contract-Keywords aus der Datenbank"
+)
+parser.add_argument("-n", "--dry-run", help="Nur ausgeben, nicht erzeugen oder speichern", action='store_true')
+parser.add_argument("-v", "--version", help="Versions Info ausgeben", action='store_true')
+args = parser.parse_args()
+
+if args.version:
+    version()
+    exit(0)
+
+def debug(msg):
+    """
+    Gibt eine farbige Debug-Nachricht auf stderr aus, wenn DBG_LEVEL > 0 ist.
+
+    Die Nachricht wird gelb und fett formatiert dargestellt.
+    Zusätzlich wird automatisch der direkte Aufrufer (Datei und Zeilennummer) mit ausgegeben.
+
+    Parameter:
+        msg (str): Die auszugebende Debug-Nachricht.
+
+    Voraussetzung:
+        Die globale Variable DBG_LEVEL muss definiert und in eine Ganzzahl konvertierbar sein.
+    """
+    if int(DBG_LEVEL) != 0:
+        stack = inspect.stack()
+        caller = stack[1]  # Der direkte Aufrufer
+        print(f"Aufgerufen von: Zeile {caller.lineno}, Funktion {caller.function}")
+        print(get_fore_color("YELLOW") + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
+
+def info(msg_a, msg_b="", type="Info"):
+    """
+    Gibt eine formatierte Informationsnachricht farbig auf stderr aus.
+
+    Die Nachricht besteht aus einem Typ-Präfix (z. B. "Info", "Warnung", "Fehler") und zwei Textbestandteilen,
+    die farblich unterschiedlich hervorgehoben werden.
+
+    Parameter:
+        msg_a (str): Hauptnachricht, wird in Weiß ausgegeben.
+        msg_b (str, optional): Zusätzliche Nachricht, wird in Gelb ausgegeben (Standard: leer).
+        type (str, optional): Typ-Präfix der Nachricht, wird in Blau ausgegeben (Standard: "Info").
+
+    Ausgabe:
+        Eine farbig formatierte Zeile wird auf stderr ausgegeben.
+    """
+    print(get_fore_color("BLUE") + Style.BRIGHT + f"{type}:" + get_fore_color("WHITE") + f" {msg_a}" + get_fore_color("YELLOW") + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
+
+def warning(msg_a, msg_b, type="Warning"):
+    """
+    Gibt eine formatierte Informationsnachricht farbig auf stderr aus.
+
+    Die Nachricht besteht aus einem Typ-Präfix (z. B. "Info", "Warnung", "Fehler") und zwei Textbestandteilen,
+    die farblich unterschiedlich hervorgehoben werden.
+
+    Parameter:
+        msg_a (str): Hauptnachricht, wird in Weiß ausgegeben.
+        msg_b (str, optional): Zusätzliche Nachricht, wird in Gelb ausgegeben (Standard: leer).
+        type (str, optional): Typ-Präfix der Nachricht, wird in Blau ausgegeben (Standard: "Info").
+
+    Ausgabe:
+        Eine farbig formatierte Zeile wird auf stderr ausgegeben.
+    """
+    print(get_fore_color("RED") + Style.BRIGHT + f"{type}:" + get_fore_color("YELLOW") + f" {msg_a}" + get_fore_color("RED") + f" {msg_b}" + Style.RESET_ALL, file=sys.stderr)
+
+# For colorized output
+colorama.init(autoreset=True)
+# Definition of colors
+def get_fore_color(color):
+    """
+    Returns the color code for text foreground in the console based on the
+    given color name.
+
+    :param color: A string representing the color name.
+    Available color names are:
+                 - "RED" (default for error messages)
+                 - "MAGENTA"
+                 - "GREEN"
+                 - "YELLOW" (default for debug messages)
+                 - "BLUE"
+                 - "WHITE" (default for info messages)
+
+    :return: The color code for the specified color, or Fore.RESET if the color
+             name is not recognized.
+    """
+    colors = {
+        "RED": Fore.RED,        # Default für Error
+        "MAGENTA": Fore.MAGENTA,
+        "GREEN": Fore.GREEN,
+        "YELLOW": Fore.YELLOW,  # Default für Debug
+        "BLUE": Fore.BLUE,
+        "WHITE": Fore.WHITE,    # Default für Info
+        # Weitere Farben hier hinzufügen, falls gewünscht
+    }
+    return colors.get(color, Fore.RESET)
+
+def ssh_config_check():
+    """
+    Stellt sicher, dass in ~/.ssh/config ein 'Host hq' mit den Default-Werten existiert,
+    inklusive User-Zeile (User wird abgefragt, wenn er fehlt).
+    """
+    ssh_config_path = os.path.expanduser("~/.ssh/config")
+
+    # Vorhandene Konfigurationszeilen lesen
+    if os.path.exists(ssh_config_path):
+        with open(ssh_config_path, "r") as f:
+            config_lines = f.readlines()
+    else:
+        config_lines = []
+
+    found_host = False
+    has_user = False
+    insert_index = None
+
+    # Suche nach Host hq
+    for i, line in enumerate(config_lines):
+        if line.strip().lower() == f"host {SSH_HOST}":
+            found_host = True
+            insert_index = i
+            for j in range(i + 1, len(config_lines)):
+                if config_lines[j].strip().lower().startswith("host "):
+                    break
+                if config_lines[j].strip().lower().startswith("user "):
+                    has_user = True
+                    break
+            break
+
+    if not found_host:
+        user = input(f"🔐 Kein Eintrag für 'Host {SSH_HOST}' gefunden. Bitte User angeben: ").strip()
+        new_block = (
+            f"\nHost {SSH_HOST}\n"
+            f"    User {user}\n"
+            f"    HostName {SSH_HOSTNAME}\n"
+            f"    IdentityFile {SSH_IDENTITY_FILE}\n"
+        )
+        config_lines.append(new_block)
+        info(f"✅ Neuer Block eingefügt für: ",f"'Host {SSH_HOST}'")
+    elif found_host and not has_user:
+        user = input(f"🔐 'Host {SSH_HOST}' vorhanden, aber kein User gesetzt. Bitte User angeben: ").strip()
+        config_lines.insert(insert_index + 1, f"    User {user}\n")
+        info(f"✅ User-Zeile ergänzt für: ", f"'Host {SSH_HOST}'")
+    else:
+        info(f"🔎 'Host {SSH_HOST}' mit User-Eintrag bereits vorhanden. Keine Änderung nötig.")
+
+    # Datei zurückschreiben
+    with open(ssh_config_path, "w") as f:
+        f.writelines(config_lines)
+
+def checkNfetch_file_from_NIS(remote_path, local_dest, ssh_host="hq"):
+    """
+    Prüft, ob die Datei lokal existiert, und kopiert sie bei Bedarf via rsync über SSH
+    unter Nutzung der ~/.ssh/config Einträge.
+
+    Parameter:
+    - remote_path:  Pfad zur Datei auf dem Remote-Host
+    - local_dest:   Ziel lokal
+    - ssh_host:     Alias aus ~/.ssh/config, z. B. 'hq'
+
+    Rückgabewert:
+    - True  bei Erfolg (Datei existiert oder erfolgreich übertragen)
+    - False bei Fehler
+    """
+    ssh_config_check()
+
+    if os.path.isfile(local_dest):
+        info(f"✔️  Datei existiert bereits:", local_dest)
+        return True
+
+    info(f"⏳ Versuche, Datei per rsync zu holen, von:", f"{ssh_host}:{remote_path}...")
+
+    try:
+        subprocess.run(
+            ["rsync", "-av", f"{ssh_host}:{remote_path}", local_dest],
+            check=True
+        )
+        if os.path.isfile(local_dest):
+            info(f"✅ Datei erfolgreich kopiert nach", local_dest)
+            time.sleep(2)
+            return True
+        else:
+            warning(f"❌ Datei wurde nicht wie erwartet kopiert:", local_dest)
+            return False
+    except subprocess.CalledProcessError as e:
+        warning(f"❌ Fehler beim rsync:", e)
+        return False
+
+def update_config_comments():
+    # Neue Dateiinhalt als Liste von Zeilen aufbauen
+    new_lines = []
+    added = False
+    for section, comments in CONFIG_EXAMPLES.items():
+        if not config.has_section(section):
+            config.add_section(section)
+            added = True
+
+        # Kommentarblock schreiben
+        new_lines.append(f"[{section}]\n")
+        for line in comments:
+            new_lines.append(f"{line}\n")
+
+        # Key-Value-Paare, wenn vorhanden
+        for key, value in config.items(section):
+            new_lines.append(f"{key} = {value}\n")
+
+        new_lines.append("\n")  # Leerzeile zwischen Sektionen
+
+    # Datei überschreiben
+    with open(config_file,"w") as f:
+        f.writelines(new_lines)
+
+    if added:
+        info(f"Example-Kommentare in {config_file} aktualisiert!")
+
+# Prüft welche "Kürzel" verwentet werden, entsprechend der Vorlage aus:
+# /home/projects/Intern/hecokwreport.hg/template:
+#   heco.projects.sql
+#   heco.projects-v2.sql
+#   heco.projects-ms.sql
+def get_db_key_structure():
+    conn = dbms.connect(args.database)
+    cursor = conn.cursor()
+
+    cursor.execute(queries.check_db_key_structure)
+    rows = cursor.fetchall()
+    if rows:
+        debug(f"get_db_key_structure: rows = {rows}, count rows = {len(rows)}")
+        return len(rows) # > 0 = heco.projects.sql, sonst heco.projects-v2.sql oder heco.projects-ms.sql
+    return 0
+
+# Automigrate Funktion im alte Daten und Config zu migrieren:
+def auto_migration():
+    """
+    Führt eine automatische Migration der Konfiguration und Datenbanken durch:
+
+    1. Kopiert die alte Konfigurationsdatei '~/.config/hkwdreport.conf' nach
+       '~/.config/hkwreport.conf', wenn letztere noch nicht existiert.
+       Gibt eine Info-Meldung aus, lässt die alte Datei aber bestehen.
+
+    2. Aktualisiert in der neuen Konfiguration im Abschnitt [ProjectIDs] die Schlüssel:
+       - 'Sachbearbeitung abrechenbar' → 'Sacharbeit abrechenbar'
+       - 'Sachbearbeitung andere*'    → 'Sacharbeit andere*'
+
+    3. Öffnet die SQLite-Datenbank '~/.heco/time.db' und ersetzt in der Tabelle 'projects':
+       - ID 322: description → 'Sacharbeit abrechenbar'
+       - ID 323: description → 'Sacharbeit andere*'
+
+    4. Öffnet die SQLite-Datenbank '~/.heco/keyword_id.db' und benennt in der Tabelle 'contracts'
+       die Spalte 'category' um in 'task', sofern 'category' existiert und 'task' noch nicht existiert.
+
+    Hinweise:
+    - Diese Funktion kann gefahrlos mehrfach aufgerufen werden.
+    - Bei Fehlern in den Datenbankoperationen werden Ausnahmen abgefangen und ausgegeben.
+    """
+    global dbms, queries
+
+    info(f"Running Automigration ...")
+
+    success = False
+    db_key_structure = get_db_key_structure()
+
+    # Schritt 1: Alte Config kopieren
+    if int(DBG_LEVEL)==1:
+        debug(f"auto_migration: success = {success}")
+        debug(f"auto_migration: Checking for {old_config_path}")
+    if os.path.exists(old_config_path) and not os.path.exists(config_file):
+        shutil.copy(old_config_path, config_file)
+        info(f"Alte Config migriert nach {config_file}. Alte Config nicht entfernt!")
+        success = True
+    elif os.path.exists(config_file):
+        success = True
+
+    if int(DBG_LEVEL)==-1 and success:
+        debug(f"auto_migration: success = {success}")
+        info(f"{old_config_path} exsists, ", "migrated to default config file: {config_file}")
+    elif int(DBG_LEVEL)==-1 and not success:
+        info(f"{old_config_path} does not exsists, ", f"using default config file: {config_file}")
+
+    # Schritt 2: Einträge in [ProjectIDs] aktualisieren (Description zu Project ID 322 und 323 anpassen)
+    if int(DBG_LEVEL)==-1:
+        debug(f"auto_migration: success = {success}")
+        debug(f"auto_migration: Checking for entries if [ProjectIDs] in default {config_file}")
+    if os.path.exists(config_file):
+        config.read(config_file)
+
+        if config.has_section("ProjectIDs"):
+            if int(DBG_LEVEL)==-1:
+                debug(f"auto_migration: Checking ProjectIDs in {config_file}")
+            changes_made = False
+            mapping = {
+                "Sachbearbeitung abrechenbar": "Sacharbeit abrechenbar",
+                "Sachbearbeitung andere*": "Sacharbeit andere*"
+            }
+
+            for old_key, new_key in mapping.items():
+                if config.has_option("ProjectIDs", old_key):
+                    value = config.get("ProjectIDs", old_key)
+                    config.remove_option("ProjectIDs", old_key)
+                    config.set("ProjectIDs", new_key, value)
+                    changes_made = True
+
+            if changes_made:
+                success = False
+                update_config(config)
+                info("Config-Einträge in [ProjectIDs] erfolgreich aktualisiert.")
+                get_config("auto_migration")
+                success = True
+
+    # Schritt 3: heco DB aktualisieren (Description zu Project ID 322 und 323 anpassen)
+    dbpath = args.database
+    if int(DBG_LEVEL)==-1:
+        debug(f"auto_migration: success = {success}")
+        debug(f"auto_migration: Checking 'description for project id 322 and 323' heco database {dbpath}")
+    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+        dbms = importlib.import_module('psycopg')
+        queries = importlib.import_module('pg_queries')
+    if os.path.exists(dbpath):
+        try:
+            success = False
+            conn = dbms.connect(dbpath)
+            cursor = conn.cursor()
+            resA = get_project_id(cursor, "├─ Sachbearbeitung abrechenbar")
+            resB = get_project_id(cursor, "└─ Sachbearbeitung andere*")
+            cursor = conn.cursor()
+            debug(f"db_key_structure = {db_key_structure}")
+            debug(f"len(projects_id_map) = {len(projects_id_map)}")
+            if db_key_structure != len(projects_id_map) - 5 : 
+                # TODO: Bessere Zuordnung welches DB-Schema genutzt wird bauen ( Quick-FIX: -5 = - Anzahl der Oberkategorien )
+                if resA != None and int(resA) == 322:
+                    sql_update = "UPDATE projects SET description = '  Sacharbeit abrechenbar' WHERE id = 322;"
+                    info(f"sql_update = {sql_update}")
+                    cursor.execute(sql_update)
+                    conn.commit()
+                if resB != None and int(resB) == 323:
+                    sql_update = "UPDATE projects SET description = '  Sacharbeit andere*' WHERE id = 323;"
+                    info(f"sql_update = {sql_update}")
+                    cursor.execute(sql_update)
+                    conn.commit()
+            elif (resA and resB and db_key_structure == len(projects_id_map) - 5 and int(resA) == 322 and int(resB) == 323):
+                # TODO: Bessere Zuordnung welches DB-Schema genutzt wird bauen ( Quick-FIX: -5 = - Anzahl der Oberkategorien )
+                if resA != None and int(resA) == 322:
+                    sql_update = "UPDATE projects SET description = '├─ Sacharbeit abrechenbar' WHERE id = 322;"
+                    info(f"sql_update = {sql_update}")
+                    cursor.execute(sql_update)
+                    conn.commit()
+                if resB != None and int(resB) == 323:
+                    sql_update = "UPDATE projects SET description = '└─ Sacharbeit andere*' WHERE id = 323;"
+                    info(f"sql_update = {sql_update}")
+                    cursor.execute(sql_update)
+                    conn.commit()
+                info("Projektbeschreibungen in time.db erfolgreich aktualisiert.")
+            else:
+                info("Projektbeschreibungen in time.db sind aktuell.")
+            success = True
+        except Exception as e:
+            success = False
+            warning(f"heco DB aktualisieren: Fehler beim Aktualisieren der {dbpath}:", e)
+            sys.exit(1)
+        finally:
+            success = True
+            conn.close()
+
+    # Schritt 4: Spalte "category" in Datenbank: db_keyword_id_path umbenennen in "task"
+    if int(DBG_LEVEL)==-1:
+        debug(f"auto_migration: success = {success}")
+        debug(f"auto_migration: Checking for col 'category' key word id database {db_keyword_id_path} nad rename it to 'task', is exists")
+    if os.path.exists(db_keyword_id_path):
+        try:
+            success = False
+            conn = dbms.connect(db_keyword_id_path)
+            cursor = conn.cursor()
+            # Prüfen ob Spalte 'category' existiert
+            cursor.execute("PRAGMA table_info(contracts);")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "category" in columns and "task" not in columns:
+                cursor.execute("ALTER TABLE contracts RENAME COLUMN category TO task;")
+                conn.commit()
+                info("Spalte 'category' wurde zu 'task' umbenannt in keyword_id.db.")
+        except Exception as e:
+            success = False
+            warning(f"Spalte 'category' in Datenbank: Fehler beim Anpassen der {db_keyword_id_path}:", e)
+            sys.exit(1)
+        finally:
+            success = True
+            conn.close()
+    if int(DBG_LEVEL)==-1:
+        debug(f"auto_migration: success = {success}")
+    return success
+
+def check_user_in_group(group_name):
+    """
+    Prüft, ob der aktuelle Benutzer Mitglied einer bestimmten Unix-Gruppe ist.
+
+    Parameter:
+        group_name (str): Der Name der zu überprüfenden Gruppe.
+
+    Rückgabe:
+        True, wenn der Benutzer Mitglied der Gruppe ist.
+
+    Raises:
+        ValueError: Wenn die Gruppe nicht existiert oder der Benutzer kein Mitglied ist.
+    """
+    try:
+        grp.getgrnam(group_name)  # Prüft, ob Gruppe existiert
+    except KeyError:
+        raise ValueError(f"❌ Gruppe '{group_name}' existiert nicht.")
+
+    user = getpass.getuser()
+    try:
+        group_ids = os.getgrouplist(user, os.getgid())
+    except OSError as e:
+        raise ValueError(f"Fehler beim Abrufen der Gruppen für Benutzer '{user}': {e}")
+
+    user_groups = [grp.getgrgid(gid).gr_name for gid in group_ids]
+
+    if group_name in user_groups:
+        return True
+    else:
+        raise ValueError(
+            f"❌ Die Operation ist nicht erlaubt!\n"
+            f"Benutzer '{user}' ist **nicht** Mitglied der Gruppe '{group_name}'."
+        )
+
+if GROUP:
+    try:
+        group_ok = check_user_in_group(GROUP)
+        if group_ok:
+            args.group = GROUP
+    except Exception as e:
+        warning(f"Fehler beim Parsen von GROUP ", e, "Error")
+        sys.exit(1)
+
+if GROUP and check_user_in_group(GROUP):
+    args.group = GROUP
+
+# Determine current week and year if not provided
+def parse_week_env(timestamp):
+    """
+    Liest die Umgebungsvariablen YEAR und WEEK/KW aus und setzt args.year und args.week entsprechend.
+    Akzeptiert Formate wie:
+        - WEEK=19
+        - WEEK=2025/19
+        - WEEK=2025-19
+        - WEEK=19/2025
+        - WEEK=19-2025
+    """
+    YEAR = os.environ.get('YEAR')
+    WEEK = os.environ.get('KW')
+    if not WEEK:
+        WEEK = os.environ.get('WEEK')
+
+    isocal = timestamp.isocalendar()
+
+    try:
+        if WEEK:
+            parts = WEEK.replace('-', '/').split('/')
+            if len(parts) == 1 and len(parts[0])<3:
+                # Nur Woche angegeben (YEAR ggf. separat)
+                week = int(parts[0])
+                if YEAR:
+                    year = int(YEAR)
+                else:
+                    year = isocal[0]  # fallback: aktuelles Jahr
+            elif len(parts) == 2 and ((len(parts[0])<3 and len(parts[1])==4) or (len(parts[1])<3 and len(parts[0])==4)):
+                # YEAR/WEEK oder WEEK/YEAR
+                a, b = parts
+                if int(a) > 1000:
+                    year, week = int(a), int(b)
+                else:
+                    week, year = int(a), int(b)
+            else:
+                raise ValueError(f"Ungültiges Format für WEEK: {WEEK}")
+
+            args.year = year
+            args.week = week
+
+        elif YEAR:
+            if len(str(YEAR))==4:
+                args.year = int(YEAR)
+            else:
+                raise ValueError(f"Ungültiges Format für YEAR: {YEAR}")
+            if not args.week:
+                args.week = isocal[1]
+        else:
+            if not args.week:
+                args.week = isocal[1]
+            if not args.year:
+                args.year = isocal[0]
+    except Exception as e:
+        warning(f"Fehler beim Parsen von WEEK/YEAR: ", e, "Error")
+        sys.exit(1)
+
+def init_heco(kw=None):
+    """
+    Initialisiert eine heco time.db und führt ein Projekt-SQL-Import durch.
+    Optional mit Kalenderwoche (`kw`) als int.
+    """
+    import subprocess
+
+    if not os.path.exists(sql_template):
+        warning(f"Das in {config_file} definierte SQL-Template für heco: {sql_template} existiert nicht!", "")
+        prompt  = (f"Möchten sie das Default SQL-Template für heco verwenden und nach {sql_template} kopieren? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "")
+        print("\n")
+        if answer in ("", "j", "ja", "y", "yes"):
+            checkNfetch_file_from_NIS(default_sql_template, sql_template)
+        else:
+            warning(f"Da das in {config_file} definierte SQL-Template für heco existiert nicht!\nBitte dort hinterlegen!\n\n","Abbruch!")
+            sys.exit(1)
+
+    if not os.path.exists(wf_check_path):
+        warning(f"Das in {config_file} definierte wochenfazit.py: {wf_check_path} existiert nicht!", "")
+        prompt  = (f"Möchten sie das Default wochenfazit.py nach {wf_check_path} kopieren? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "")
+        print("\n")
+        if answer in ("", "j", "ja", "y", "yes"):
+            checkNfetch_file_from_NIS(default_wf_check_path, wf_check_path)
+        else:
+            warning(f"Da das in {config_file} definierte wochenfazit.py für heco existiert nicht!\nBitte dort hinterlegen!\n\n","Abbruch!")
+            sys.exit(1)
+#TODO: Postgress Support weiter ein-/ausbauen
+    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+        info("Derzeit wird nur SQLite unterstutzt für die Initalisierung von heco.")
+        sys.exit(1)
+    else:
+
+        if kw is not None:
+            # Pfad für eine bestimmte KW
+            db_dir = os.path.expanduser(f"~/.heco/2025/kw{int(kw)}")
+            db_path = os.path.join(db_dir, "time.db")
+        else:
+            # Standard-Pfad
+            db_dir = os.path.expanduser("~/.heco")
+            db_path = os.path.join(db_dir, "time.db")
+
+        if os.path.exists(db_path):
+            info(f"Es exsistiert bereits eine {db_path}", "Es wird da hier abgebrochen!")
+            sys.exit(1)
+            return
+
+        os.makedirs(db_dir, exist_ok=True)
+
+        # heco initialisieren
+        subprocess.run(["heco", "--init-only", db_path], check=True)
+
+        # SQL-Datei importieren
+
+        if int(DBG_LEVEL)<0:
+            debug(f"sql_template = {sql_template}")
+        subprocess.run(
+            f"echo '.read {sql_template}' | sqlite3 {db_path}",
+            shell=True,
+            check=True
+        )
+
+    # Interaktive Konfiguration starten
+    configure_interactive()
+
+    if not auto_migration():
+        sys.exit(1)
+
+def initialize_contracts_db():
+    """Initialisiert die contracts-Datenbank mit Beispieldaten, falls nicht vorhanden."""
+    os.makedirs(os.path.dirname(db_keyword_id_path), exist_ok=True)
+
+    conn = dbms.connect(db_keyword_id_path)
+    cursor = conn.cursor()
+
+    # Tabelle erstellen (mit AUTOINCREMENT)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            keyword TEXT NOT NULL,
+            contract_id TEXT NOT NULL,
+            task TEXT
+        );
+    """)
+
+    # Beispielhafte Einträge
+    contracts = [
+        ('pflege', '#4012', 'Dauertätigkeit'),
+        ('verbesserung', '#4012', 'Dauertätigkeit'),
+        ('features', '#4013', 'Dauertätigkeit'),
+        ('betrieb', '#4014', 'Dauertätigkeit'),
+        ('openslides-allgemein', '#3969', 'Dauertätigkeit'),
+        ('relationale datenbank', '#4015', 'Projekt'),
+        ('keycloak', '#4016', 'Projekt'),
+        ('crypto-vote', '#4017', 'Projekt'),
+        ('projektor-service', '#4019', 'Projekt'),
+    ]
+
+    for keyword, contract_id, task in contracts:
+        cursor.execute(queries.contract_insert, (keyword, contract_id, task, keyword, contract_id))
+
+    conn.commit()
+    conn.close()
+
+def get_contract_id(entry, db_path=None):
+    """
+    Gibt contract_id zurück, wenn ein keyword im entry enthalten ist.
+    Case-insensitive Teilstring-Suche.
+    Wenn mehrere Keywords zutreffen, wird interaktiv nach der passenden contract_id gefragt.
+    """
+    if not entry:
+        return None  # Sofort abbrechen, wenn entry leer oder None ist
+
+    if db_path is None:
+        db_path = db_keyword_id_path
+
+    if (not config.has_option("Database", "dbms") or
+        config.get("Database", "dbms") == "sqlite") and not os.path.exists(db_path):
+        initialize_contracts_db()
+
+    conn = dbms.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(queries.contract_select)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    entry_lower = entry.lower()
+    matches = []
+
+    keyword_place = None
+    if config.has_option("Database", "keyword_place"):
+        keyword_place = config.get("Database", "keyword_place").lower()
+    if int(DBG_LEVEL)==1:
+        debug(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX keyword_place = {keyword_place}")
+
+    for keyword, contract_id, task in rows:
+        #if entry_lower.startswith(keyword.lower()) in entry_lower:
+#        if keyword.lower() in entry_lower:
+#            if (keyword_place != None and keyword_place in ("1", "beginning", "first") and entry_lower.startswith(keyword.lower())) or keyword_place in ("*","any") or keyword_place == None:
+#                matches.append({'contract_id': contract_id, 'task': task, 'keyword': keyword})
+#            else:
+#                info(f"Keyword [{keyword}] gefunden, aber nicht an definierter Stelle laut:\n",f"{config_file}:\n    [Database]\n        keyword_place = {keyword_place}\n")
+        pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+        if re.search(pattern, entry_lower):
+            if (keyword_place != None and keyword_place in ("1", "beginning", "first") and entry_lower.startswith(keyword.lower())) or keyword_place in ("*","any") or keyword_place == None:
+                matches.append({'contract_id': contract_id, 'task': task, 'keyword': keyword})
+            else:
+                info(f"Keyword [{keyword}] gefunden, aber nicht an definierter Stelle laut:\n",f"{config_file}:\n    [Database]\n        keyword_place = {keyword_place}\n")
+    if int(DBG_LEVEL)==5:
+        debug(f"len(matches) = {len(matches)}")
+    if len(matches) == 1:
+        return {'contract_id': matches[0]['contract_id'], 'keyword': matches[0]['keyword'], 'task': matches[0]['task']}
+
+    elif len(matches) > 1:
+        warning(f"  {entry}", " <- Mehrdeutiger Eintrag – mehrere Keywords gefunden")
+        print("Folgende Keywords wurden gefunden:")
+        for idx, match in enumerate(matches, 1):
+            print(f"[{idx}] contract_id: {match['contract_id']} | keyword: '{match['keyword']}' | task: {match['task']}")
+
+        prompt = f"Welche ID soll verwendet werden für '{entry}'? [1-{len(matches)}]: "
+        while True:
+            try:
+                answer = input_with_prefill(prompt, "", "")
+                selected = int(answer)
+                if 1 <= selected <= len(matches):
+                    r = {
+                        'contract_id': matches[selected - 1]['contract_id'],
+                        'keyword': matches[selected - 1]['keyword'],
+                        'task': matches[selected - 1]['task']
+                    }
+                    #info(f"selected r = {r}")
+                    return r
+                else:
+                    print(f"Ungültige Eingabe. Bitte Zahl zwischen 1 und {len(matches)} eingeben.")
+            except (ValueError, TypeError):
+                print("Bitte gültige Zahl eingeben.")
+
+    return None
+
+def show_contract_keywords():
+    """Zeigt alle gespeicherten Contract-Keywords tabellarisch an."""
+    if not os.path.exists(db_keyword_id_path):
+        info("Noch keine Contract-Keyword-Datenbank vorhanden.","Initialisiere DB")
+        initialize_contracts_db()
+
+    conn = dbms.connect(db_keyword_id_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT contract_id, keyword, task FROM contracts ORDER BY contract_id, keyword")
+    rows = cursor.fetchall()
+
+    if not rows:
+        info("Keine Contract-Keywords gefunden.")
+    else:
+        # Spaltenüberschrift
+        print(f"{'Contract ID':<12} | {'Keyword':<30} | {'Kategorie':<20}")
+        print("-" * 12 + "-+-" + "-" * 30 + "-+-" + "-" * 20)
+
+        for contract_id, keyword, task in rows:
+            print(f"{contract_id:<12} | {keyword:<30} | {task or '-':<20}")
+
+    conn.close()
+
+def delete_contract_keyword():
+    """Löscht ein einzelnes Keyword aus der Contract-Datenbank."""
+    if not os.path.exists(db_keyword_id_path):
+        info("Noch keine Contract-Keyword-Datenbank vorhanden.","Initialisiere DB")
+        initialize_contracts_db()
+
+    show_contract_keywords()
+
+    keyword = input("Welches Keyword soll gelöscht werden? ").strip()
+
+    if not keyword:
+        warning("Kein Keyword eingegeben.")
+        return
+
+    conn = dbms.connect(db_keyword_id_path)
+    cursor = conn.cursor()
+
+    # Prüfen ob das Keyword existiert
+    cursor.execute(queries.contract_by_keyword, (keyword,))
+    results = cursor.fetchall()
+
+    if not results:
+        info(f"Keyword '{keyword}'"," nicht gefunden.")
+    else:
+        warning("Folgender Eintrag wird gelöscht:","")
+        for contract_id, task in results:
+            print(f"- Contract ID: {contract_id}, Kategorie: {task or '-'}")
+
+        confirm = input(f"Möchtest du das Keyword '{keyword}' wirklich löschen? [j/N] ").strip().lower()
+        if confirm == "j":
+            cursor.execute(queries.contract_delete, (keyword,))
+            conn.commit()
+            info(f"Keyword '{keyword}'"," wurde gelöscht.")
+        else:
+            info("Löschen abgebrochen.","")
+
+    conn.close()
+
+def set_contract_keywords(keywords):
+    """Setzt ein oder mehrere Keywords in der Contract-Datenbank."""
+    os.makedirs(os.path.dirname(db_keyword_id_path), exist_ok=True)
+
+    if not os.path.exists(db_keyword_id_path):
+        initialize_contracts_db()
+
+    # DB und Tabelle sicherstellen
+    conn = dbms.connect(db_keyword_id_path)
+    cursor = conn.cursor()
+    cursor.execute(queries.create_contracts_tbl)
+    conn.commit()
+
+    # Nach contract_id fragen
+    contract_id = input_with_prefill("Contract ID (z. B. #4012): ", "")
+    if not contract_id.strip():
+        print("Abgebrochen: Contract-ID darf nicht leer sein.")
+        return
+
+    # Nach Kategorie fragen
+    task = input_with_prefill("Kategorie (z. B. Dauertätigkeit, Projekt): ", "")
+
+    # Falls per Argument mitgegeben, verwenden
+    if keywords:
+        input_keywords = keywords
+    else:
+        # Manuelle Eingabe, mehrere durch Komma trennbar
+        keyword_input = input_with_prefill("Keywords (durch Komma getrennt): ", "")
+        input_keywords = [kw.strip() for kw in keyword_input.split(',') if kw.strip()]
+
+    # In DB eintragen
+    inserted = 0
+    for kword in input_keywords:
+        cursor.execute(queries.contract_exists, (kword, contract_id))
+        if cursor.fetchone():
+            warning(f"Übersprungen: Keyword '{kword}' mit ID '{contract_id}' existiert bereits.", "Info")
+            continue
+
+        cursor.execute(queries.contract_insert, (kword, contract_id, task, kword, contract_id))
+        inserted += 1
+
+    conn.commit()
+    conn.close()
+    info(f"{inserted} Keyword(s)"," gespeichert.")
+
+def input_with_prefill(prompt, prefill, end='\n'):
+    """Input Prompt, der die Möglichkeit bietet, das Value zu setzen umd es bearbeiten zu können."""
+    def hook():
+        readline.insert_text(prefill)
+        readline.redisplay()
+    readline.set_pre_input_hook(hook)
+    try:
+        print(prompt, end=end, file=sys.stderr, flush=True)  # über stderr ausgeben
+        return input()  # ohne Argument – sonst landet Prompt in stdout
+    finally:
+        readline.set_pre_input_hook()
+
+def is_current_week_and_complete(db_path, year, kw):
+    """
+    Prüf Funktion, die überprüft, ob die definierten Arbeitstage auch schon Arbeitszeiteneinträge haben.
+    Und setzt den Trigger ob es eine Tagesabweichung gibt, von der eingetsellten normal Arbeitsstunden.
+    """
+    # Aktuelle Woche und Jahr ermitteln
+    today = datetime.today()
+    current_year, current_kw, _ = today.isocalendar()
+
+    is_current = (year == current_year and kw == current_kw)
+
+    # Wochenbeginn (Montag) und Ende (Sonntag) berechnen
+    def get_week_bounds(year, kw):
+        # ISO-Woche: Montag als erster Tag
+        monday = datetime.strptime(f'{year}-W{kw:02}-1', "%G-W%V-%u")
+        return monday
+
+    monday = get_week_bounds(year, kw)
+
+    # Verbindung zur SQLite-Datenbank herstellen
+    conn = dbms.connect(db_path)
+    cursor = conn.cursor()
+
+    # Wochentage Mo–Fr
+    weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr']
+    missing_days = []
+
+    for day_index in range(5):  # Mo–Fr
+        day = monday + timedelta(days=day_index)
+        day_str = day.strftime('%Y-%m-%d')
+        next_day_str = (day + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        if int(DBG_LEVEL)==-2:
+            debug (f"queries.week_complete = {queries.week_complete}")
+        cursor.execute(
+            queries.week_complete,
+            (day_str, next_day_str)
+        )
+        count = cursor.fetchone()[0]
+        if count == 0:
+            missing_days.append(weekdays[day_index])
+
+    conn.close()
+
+    all_days_complete = (len(missing_days) == 0)
+    return is_current, all_days_complete, missing_days
+
+def check_directory_exists(file_path):
+    """Prüft ob ein Verzeichnis Pfad exsistiert und ein wirklich ein Verzeichnis ist!"""
+    directory = os.path.dirname(file_path)
+    return os.path.isdir(directory)
+
+def format_decimal(value):
+    """Formatiert einen Dezimalwert entsprechend dem Gebietsschema, entfernt unnötige Nullen und gibt ‚0‘ für Null zurück."""
+    if value == 0 or value == 0.0:
+        return "0"
+
+    formatted_value = f"{value:.1f}".replace(".", DECIMAL_POINT)
+    if int(DBG_LEVEL)==1:
+        debug(f"from format_decimal: formatted_value = {formatted_value}")
+    if formatted_value.endswith(f"{DECIMAL_POINT}0"):
+        if int(DBG_LEVEL)==1:
+            debug(f"from format_decimal (endswith 0): formatted_value = {formatted_value}")
+        return formatted_value[:-2]
+    return formatted_value
+
+def extract_name():
+    """
+    Holt den Namen aus der Umgebungsvariable "EMAIL"
+
+    TODO: get_name_from_config()
+    """
+    email_string = os.environ.get('EMAIL')
+    if email_string:
+        match = re.match(r"([\w\s]+)", email_string)
+        if match:
+            return match.group(1).strip()
+    else:
+        # TODO: get_name_from_config()
+        return get_name_from_config()
+
+# TODO: Hole den Namen aus der Config "~.config/hkwreport.conf"
+#       Siehe auch "get_config()"
+#
+def get_name_from_config():
+    """
+    Holt den Namen aus der Config "config_file"
+    """
+    # ....
+    return None
+
+def get_calendar_week(date_str):
+    """
+    Gibt die Kalenderwoche (ISO 8601) zu einem Datum im Format 'YYYY-MM-DD' zurück.
+    Rückgabe: (jahr, kw) als Tuple
+    """
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        iso_year, iso_week, _ = date_obj.isocalendar()
+        return iso_year, iso_week
+    except ValueError:
+        raise ValueError("Ungültiges Datumsformat. Erwartet: YYYY-MM-DD")
+
+def get_or_create_projects_id_map():
+    """
+    Erstellt oder holt sich die ID Map zu den Projects für heco time.db und speichert sie in die Config
+    """
+    if os.path.exists(config_file):
+        config.read(config_file)
+    else:
+        config['ProjectIDs'] = {}
+
+    if 'ProjectIDs' not in config:
+        info("Es fehlen noch Config Einträge zu : ", 'ProjectIDs')
+        config['ProjectIDs'] = {}
+
+    # Wenn Map-Einträge fehlen, abfragen
+    pids = projects_id_map
+    updated = False
+    set_default_map = False
+    missing_map = False
+    for ptitel, pid in pids.items():
+        if ptitel not in config['ProjectIDs']:
+            missing_map = True
+    if missing_map:
+        prompt  = (f"Möchten sie die Default Map-Einträg für die Projekt IDs verwenden? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "")
+        print("\n")
+        if answer in ("", "j", "ja", "y", "yes"):
+            set_default_map = True
+    else:
+        set_default_map = True
+
+    for ptitel, pid in pids.items():
+        if ptitel not in config['ProjectIDs']:
+            if set_default_map == False:
+                prompt = (f"Titel: {ptitel} = ID: ")
+                value = input_with_prefill(prompt, str(pid)).strip()
+                config['ProjectIDs'][ptitel] = value
+            else:
+                config['ProjectIDs'][ptitel] = str(pid)
+            updated = True
+
+    # Falls etwas geändert wurde, Config schreiben
+    if updated:
+        update_config(config)
+
+    # Map in Float-Werte konvertieren und zurückgeben
+    new_projects_id_map = {
+        ptitel: int(config['ProjectIDs'][ptitel])
+        for ptitel in config['ProjectIDs']
+    }
+    if int(DBG_LEVEL)==-1:
+        debug(f"new_projects_id_map = {new_projects_id_map}")
+    return new_projects_id_map
+
+def get_or_create_wdayhours_map():
+    """
+    Erstellt oder holt sich die Wochentag-Arbeitsstunden-Map, wird benötigt umd Tageabweichungen zu prüfen.
+    """
+
+    if os.path.exists(config_file):
+        config.read(config_file)
+    else:
+        config['Workdays'] = {}
+
+    if 'Workdays' not in config:
+        info("Es fehlen noch Config Einträge zu : ", 'Workdays')
+        config['Workdays'] = {}
+
+    # Wenn Map-Einträge fehlen, abfragen
+    weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr']
+    updated = False
+    for day in weekdays:
+        if day not in config['Workdays']:
+            while True:
+                prompt = (f"Wieviele Stunden arbeiten Sie am {day}? (z. B. 8.0): ")
+                value = input_with_prefill(prompt, str(8.0)).strip()
+                if not value:
+                    print("Eingabe darf nicht leer sein.")
+                    continue
+                try:
+                    float_val = float(value)
+                    config['Workdays'][day] = str(float_val)
+                    updated = True
+                    break
+                except ValueError:
+                    print("Bitte eine gültige Zahl eingeben (z. B. 8.0 oder 7.5).")
+
+    # Falls etwas geändert wurde, Config schreiben
+    if updated:
+        update_config(config)
+    # Map in Float-Werte konvertieren und zurückgeben
+    wdayhours_map = {day: float(config['Workdays'][day]) for day in weekdays}
+    return wdayhours_map
+
+def set_default_cons(interactive=False):
+    """
+    Setzt die Path Kosntanten in der Config (Default oder interaktiv)
+    """
+    global config_file
+
+
+    config['Database']['db_keyword_id_path'] = db_keyword_id_path
+    config['General']['kw_report_base_dir'] = kw_report_base_dir
+    config['General']['sql_template'] = sql_template
+    config['General']['wf_check_path'] = wf_check_path
+    if interactive:
+        for sec, cons_path in [
+            ("Database", "db_keyword_id_path"),
+            ("General", "kw_report_base_dir"),
+            ("General", "sql_template"),
+            ("General", "wf_check_path")
+        ]:
+            prompt = (f"['{sec}']['{cons_path}']: ")
+            value = input_with_prefill(prompt, config[sec].get(cons_path, ''))
+            config[sec][cons_path] = value
+            # globale Variable aktualisieren
+            globals()[CONFIG_KEY_TO_GLOBAL_VAR[cons_path]] = value
+
+    update_config(config)
+
+
+def get_config(call_from=None):
+    """
+    Ließt bzw. initialisiert die Config "config_file"
+    """
+    if int(DBG_LEVEL)<=0:
+        stack = inspect.stack()
+        caller = stack[1]  # Der direkte Aufrufer
+        debug(f"Aufgerufen von: Zeile {caller.lineno}")
+        if int(DBG_LEVEL)==-1:
+            debug(f"get_config was called from: {call_from}")
+    global db_keyword_id_path, kw_report_base_dir, sql_template, wf_check_path
+    if not os.path.exists(config_file):
+        set_weekhours()
+        set_first_workday()
+
+    config.read(config_file)
+
+    if 'Onboarding' not in config or 'firstday' not in config['Onboarding']:
+        info("Es fehlt noch Eintrag zum 1. Arbeitstag bzw. 1. Tag der Nutzung", '')
+        set_first_workday()
+
+    if 'General' not in config or 'weekhours' not in config['General']:
+        info("Es fehlt noch Eintrag zu den Arbeitsstunden pro Kalendarwoche", '')
+        set_weekhours()
+
+    if 'Database' not in config or 'dbpath' not in config['Database']:
+        info("Es fehlt noch der Pfad zur heco Datenbank", '')
+        set_heco_db_path()
+
+    # Nach den möglichen Änderungen nochmal lesen
+    config.read(config_file)
+
+    # Konstanten einlesen, wenn vorhanden:
+    # Konstante Pfade:
+    if 'General' in config and 'Database' in config:
+        if "db_keyword_id_path" in config['Database']:
+            db_keyword_id_path = os.path.expanduser(config['Database']['db_keyword_id_path'])
+            if int(DBG_LEVEL)==-1:
+                debug(f"db_keyword_id_path = {db_keyword_id_path}")
+        if "kw_report_base_dir" in config['General']:
+            kw_report_base_dir = os.path.expanduser(config['General']['kw_report_base_dir'])
+            if int(DBG_LEVEL)==-1:
+                debug(f"kw_report_base_dir = {kw_report_base_dir}")
+        if "sql_template" in config['General']:
+            sql_template = os.path.expanduser(config['General']['sql_template'])
+            if int(DBG_LEVEL)==-1:
+                debug(f"sql_template = {sql_template}")
+        if "wf_check_path" in config['General']:
+            wf_check_path = os.path.expanduser(config['General']['wf_check_path'])
+            if int(DBG_LEVEL)==-1:
+                debug(f"wf_check_path = {wf_check_path}")
+
+        if (
+                call_from == "no_config"
+                and not "kw_report_base_dir" in config['Database']
+                and not "sql_template" in config['General']
+                and not "wf_check_path" in config['General']
+        ):
+            prompt  = (f"Möchten sie die Default Path Konstanten für hecokwreport verwenden oder interaktiv setzen? [J / n /i = interactive]: ")
+            answer = input_with_prefill(prompt, "", "")
+            print("\n")
+            if answer in ("", "i", "j", "ja", "y", "yes"):
+                if answer == "i":
+                    set_default_cons(True)
+                else:
+                    set_default_cons(False)
+
+    weekhours = int(config['General']['weekhours'])
+    args.database = os.path.expanduser(config['Database']['dbpath'])
+    firstday = config['Onboarding']['firstday']
+    if int(DBG_LEVEL)==-1:
+        debug (f"firstday = {firstday}")
+    year, week = get_calendar_week(firstday)
+
+    if year != date.today().year:
+        return weekhours, 1
+    else:
+        return weekhours, week
+
+def set_weekhours():
+    """
+    Setzt in der Config die Wochenarbeitsstunden, wird zur Berechung von Über- bzw. Unterstunden benötigt.
+    """
+    # Benutzer nach den Wochenstunden fragen
+    weekhours = input("Bitte ihre Wochenarbeitsstunden eingeben: ")
+
+    # Wochenstunden in Sekunden umwandeln
+    weekhours_seconds = int(weekhours) * 3600
+
+    # Neue Konfigurationsdatei erstellen
+    if not "General" in config:
+        config['General'] = {}
+    if not "weekhours" in config['General']:
+        config['General']['weekhours'] = str(weekhours_seconds // 3600)  # In Stunden speichern
+
+    # Konfigurationsdatei speichern
+    update_config(config)
+
+def set_heco_db_path():
+    """
+    Setzt den Pfad zur heco time.db -> "db_path"
+    """
+    # Benutzer nach dem Pfad zur Datenbank fragen
+    db_path = input_with_prefill("Bitte Pfad zu heco Datenbank eintragen: ", args.database)
+    debug(f"db_path = {db_path}")
+
+    if not "Database" in config:
+        config['Database'] = {}
+    if not "dbpath" in config['Database']:
+        config['Database']['dbpath'] = db_path
+
+    # Konfigurationsdatei speichern
+    update_config(config)
+    info(f"Config file updated with path: ", db_path)
+
+def configure_interactive():
+    """
+    Gibt dem Benutzer die Config interaktive zu bearbeiten bzw. sich anzeigen zu lassen.
+    """
+    info("Interaktive Konfigurationsbearbeitung:\n", "(Enter-Taste, um Wert zu behalten)\n")
+    get_config("configure_interactive")
+    config.read(config_file)
+
+    for section in config:
+        set_val = True
+        prompt = None
+        if "ProjectIDs" in section:
+            prompt  = (f"Möchten sie die bereits gesetzten Map-Einträg für die Projekt IDs bearbeiten? [j/N]: ")
+        elif "Workdays" in section:
+            prompt  = (f"Möchten sie die bereits gesetzten Arbeitsstunden pro Tag bearbeiten? [j/N]: ")
+        elif "Onboarding" in section:
+            prompt  = (f"Möchten sie den bereits gesetzten Tag des 1. Arbeitstages bzw. 1. Tag der Nutzung bearbeiten? [j/N]: ")
+        elif "General" in section:
+            prompt  = (f"Möchten sie die bereits gesetzten Wochenarbeitsstunden bearbeiten? [j/N]: ")
+        elif "Database" in section:
+            prompt  = (f"Möchten sie die bereits gesetzten Pfad der Datenbank bearbeiten? [j/N]: ")
+
+        if prompt:
+            answer = input_with_prefill(prompt, "", "")
+            print ("\n")
+            if answer in ("", "n", "nein", "n", " no"):
+                set_val = False
+        else:
+            get_or_create_wdayhours_map()
+            get_or_create_projects_id_map()
+
+        for key in config[section]:
+            current_value = config[section][key]
+            if set_val:
+                new_value = input_with_prefill(f"[{section}] {key}: ", current_value)
+            else:
+                if "ProjectIDs" in section:
+                    info(f" {current_value} ->", f" {key}", f"[{section}]")
+                else:
+                    info(f" {key} :", f" {current_value}", f"[{section}]")
+                new_value = current_value
+            if new_value.strip() and new_value.strip() != current_value:
+                config[section][key] = new_value.strip()
+        if prompt:
+            print ("\n")
+
+    update_config(config)
+
+def set_first_workday():
+    """
+    Setzt den  1. Arbeitstag bzw. 1. Tag der Nutzung von heco time.db.
+    Wichtig für die Stundenberechnung (Zeitkonto, Abwesendheit, Urlaub, etc.)
+    """
+    if os.path.exists(config_file):
+        config.read(config_file)
+
+    # Benutzer nach den ersten Arbeitstag fragen
+    firstday = input("Bitte ihre 1. Arbeitstag bzw. 1. Tag der Nutzung eingeben (Format = YYYY-MM-DD): ")
+
+    if not "Onboarding" in config:
+        config['Onboarding'] = {}
+
+    if not "firstday" in config['Onboarding']:
+        config['Onboarding']['firstday'] = str(firstday)
+
+    # Konfigurationsdatei speichern
+    update_config(config)
+    info(f"Config file updated with firstday: {firstday}")
+
+def update_config(new_config):
+    """
+    Vergleicht übergebenes ConfigParser-Objekt (new_config) mit der Datei
+    und schreibt die Datei neu, wenn Änderungen vorhanden sind.
+    """
+    # Originale Konfiguration aus Datei einlesen
+    old_config = configparser.ConfigParser()
+    old_config.optionxform = str
+
+    if not os.path.exists(config_file):
+        warning(f"Config file not found! Creating now: ", config_file, "Info")
+        with open(config_file, 'w') as configfile:
+            old_config.write(configfile)
+    old_config.read(config_file)
+
+    changed = False  # Flag, ob Änderungen erkannt wurden
+
+    # Alle Sektionen und Keys aus dem neuen Config-Objekt prüfen
+    for section in new_config.sections():
+        if section not in old_config:
+            old_config[section] = {}
+            changed = True
+
+        for key, value in new_config[section].items():
+            if (
+                section not in old_config or
+                key not in old_config[section] or
+                old_config[section][key] != value
+            ):
+                old_config[section][key] = value
+                changed = True
+
+    if changed:
+        with open(config_file, 'w') as f:
+            old_config.write(f)
+        info(f"Konfiguration aktualisiert und gespeichert nach: ", config_file)
+    else:
+        info("Keine Änderungen an der Konfiguration vorgenommen.", "")
+
+def isoweek(date_string, year, week):
+    """
+    SQLite Funktion für die Timestamps in heco time.db
+    """
+    try:
+        d = datetime.strptime(date_string, "%Y-%m-%d").isocalendar()
+        return d[0] == int(year) and d[1] == int(week)
+    except:
+        return False
+
+def get_weekday_hours_per_day(conn, year, week):
+    """
+    Returns total hours for Mo–Fr in the specified calendar week and year.
+
+    :param conn: db connection
+    :param year: integer (e.g. 2024)
+    :param week: integer (1–53)
+    :return: tuple of Decimal values (Mo, Di, Mi, Do, Fr)
+    """
+    sql = wdayhours_sql + queries.wdayhours_sql_excl
+
+    cursor = conn.cursor()
+    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+        cursor.execute(sql, [week, week])
+    else:
+        cursor.execute(sql, [year, week, year, week])
+    row = cursor.fetchone()
+
+    # Convert to Decimals and ensure fallback to 0.0 if None
+    return tuple(Decimal(val) if val is not None else Decimal("0.0") for val in row)
+
+def get_kw_overhours(kw):
+    # TODO: overhours hier implementieren
+    """
+    Berechnnet die Überstunden zur angegebenen Kalendarwochen "kw"
+    """
+    cmd = ["overhours", "-kw", str(kw)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    match = re.search(r"Summe:\s*([+-]?\d+):(\d+):\d+", result.stdout)
+    if match:
+        h, m = match.groups()
+        return Decimal(h) + Decimal(m) / 60
+    return Decimal("0")
+
+def get_kw_overhours_add(kw):
+    # TODO: hkwreport hier implementieren
+    """
+    Holt sich den den Wert aus der Ausgabezeile von hkwreport "KW Zeitkonto:" zur angegebenen Kalendarwochen "kw"
+    """
+    if int(DBG_LEVEL)==1:
+        debug (f"kw = {kw}")
+    cmd = ["hkwdreport", "-kw", str(kw), "-zk"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    match = re.search(r"KW Zeitkonto:\s*([+-]?)(\d+):(\d+):\d+", result.stdout)
+    if match:
+        sign, h, m = match.groups()
+        if int(DBG_LEVEL)==-100:
+            debug(f"get_kw_overhours_add : sign={sign}, h={h}, m={m}")
+        stunden = float(Decimal(h) + Decimal(m) / 60)
+        return sign, stunden
+    return "+", float(Decimal("0"))
+
+def berechne_abwesenheiten(conn, year, week):
+    """
+    Berechnen Sie die Abwesenheitszeiten pro Kategorie.
+    """
+    cursor = conn.cursor()
+    result = {key: 0.0 for key in mapping}
+    sql = queries.absence
+    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+        cursor.execute(sql, [week, week])
+    else:
+        cursor.execute(sql, [year, week, year, week])
+    rows = cursor.fetchall()
+    for desc, stunden in rows:
+        desc = desc.strip()
+        for key, keywords in mapping.items():
+            if any(desc.startswith(word) for word in keywords):
+                result[key] += stunden
+                break
+    return result
+
+# Check if wday is Krank, Urlaub, Feiertag
+def has_wday_absence(conn, weekday_num, year, week):
+    """
+    Checks if there are any entries for 'Krank', 'Urlaub' or 'Feiertag' on a given weekday.
+
+    :param conn: db connection
+    :param weekday_num: '1' = Mo, '2' = Di, ..., '5' = Fr
+    :param year: ISO year
+    :param week: ISO calendar week
+    :return: True if there are any such entries on that weekday
+    """
+    sql = queries.wday_absence
+    cursor = conn.cursor()
+    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+        cursor.execute(sql, [week, week, weekday_num])
+    else:
+        cursor.execute(sql, [year, week, year, week, weekday_num])
+    count = cursor.fetchone()[0]
+    return count > 0
+
+def get_wday_diff(conn, wdays, year, week):
+    """Collect and print weekday deviations only if there are any."""
+    lines = [""]
+    default_comment = REMINDER_TXT
+
+    for dayname, stunden in wdays.items():
+        try:
+            stunden = Decimal(stunden)
+        except (InvalidOperation, TypeError):
+            stunden = Decimal("0.0")
+
+	# Map German weekday names to SQLite weekday numbers
+        weekday_map = {"Mo": "1", "Di": "2", "Mi": "3", "Do": "4", "Fr": "5"}
+        weekday_num = weekday_map[dayname]
+
+        # Skip if the day has only absence entries
+        if has_wday_absence(conn, weekday_num, year, week):
+            continue
+
+        # Check for deviation from expected hours
+        expected = Decimal(wdayhours_map[dayname])
+
+        # Prüfen ob Abweichung größer als ±WD_TOLERANCE
+        lower_bound = expected * Decimal(1 - WD_TOLERANCE)
+        upper_bound = expected * Decimal(1 + WD_TOLERANCE)
+
+        if stunden < lower_bound or stunden > upper_bound:
+            if stunden < 10 and stunden > 0:
+                hourstr = f" {format_decimal(round(stunden, 2))}  {default_comment}"
+            elif stunden == 0:
+                hourstr = f" {format_decimal(round(stunden, 0))}  * Überstundenabbau ???"
+            else:
+                hourstr = f"{format_decimal(round(stunden, 2))}  {default_comment}"
+            lines.append(f"Tagabweichung: {dayname}: {hourstr}")
+
+    if lines:
+        return "\n".join(lines)
+
+# Prepare SQL query
+def merge_results(result):
+    """
+    Fügt die Daten entsprechend des geforderten Formats von Wochenfazit zusammen zur weiteren Verabeitung.
+    """
+    merged = {}
+
+    # Phase 1: Sammeln und aufsummieren
+    if int(DBG_LEVEL) == -1:
+        debug(f"result = {result}")
+        debug(f"===============================================")
+    for entry in result:
+        if int(DBG_LEVEL) == -1:
+            debug(f"entry = {entry}")
+            debug(f"------------#############################################--------------")
+        desc = entry['description']
+        dur = entry['duration'] or 0.0
+        uuk = entry['uuk']
+        uuk_dur = 0.0
+        if uuk == None:
+            uuk = []
+        if int(DBG_LEVEL) == -1:
+            debug(f"uuk = {uuk}")
+            debug(f"--------------------------")
+        for u in uuk:
+            if isinstance(u, dict) and u.get('duration') is not None:
+                uuk_dur += float(u['duration'])
+
+        if desc not in merged:
+            if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+                merged[desc] = {'duration': 0.0, 'uuk': []}
+            else:
+                merged[desc] = {'duration': 0.0, 'uuk': None}
+
+            if 'task' in entry:
+                merged[desc]['task'] = entry['task']
+            if 'contract_id' in entry:
+                merged[desc]['contract_id'] = entry['contract_id']
+        merged[desc]['duration'] += float(dur)
+
+        if uuk:
+            merged[desc]['uuk'] = uuk
+
+    # Phase 2: Neuaufbau der Ergebnisliste
+    final_result = []
+    for description in merged:
+        i = {
+            'description': description,
+            'duration': merged[description]['duration'],
+            'uuk': merged[description]['uuk'],
+        }
+        if 'task' in merged[description]:
+            i['task'] = merged[description]['task']
+        if 'contract_id' in merged[description]:
+            i['contract_id'] = merged[description]['contract_id']
+        final_result.append(i)
+        if int(DBG_LEVEL) == -1:
+            debug(f"final_result = {final_result}")
+            debug(f"****************************************************")
+    return final_result
+
+def get_project_id(cursor, category):
+    """
+    Holt sich die ID zu einer "category" aus der heco time.db
+    """
+    category = f"%{category}%"
+    cursor.execute(queries.pid_by_description, (category,))  # <-- Tupel mit Komma
+    result = cursor.fetchone()
+    if int(DBG_LEVEL) == 6:
+        debug(f"result = {result}")
+    return  result[0] if result else None
+
+def get_UK_and_UUK(conn, base_sql, category, params):
+    """
+    Bereitet die Daten soweit auf und sortiert sie so, dass sie in dem geforderten Format für das Wochenfazit verarbeitbar sind.
+    """
+    pid = projects_id_map[category.strip()]
+    if int(DBG_LEVEL) == 6:
+        debug(f"pid = {pid}")
+    sql_query = base_sql.replace(
+            "SELECT",
+            "SELECT e.start_time AS entry_start_time, e.id AS entry_id, e.description AS entry,"
+            )
+
+    sql_query = sql_query.replace(
+            "GROUP BY p.id, p.key, p.description",
+            f"WHERE p.id = {str(pid)} GROUP BY p.id, p.key, p.description, e.description"
+            )
+    cursor = conn.cursor()
+    cursor.execute(sql_query, params)
+    result_rows = cursor.fetchall()
+    if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -2:
+        debug(f"sql_query = {sql_query}\nresult_rows for [{category.strip()}] = {result_rows}")
+    uk_entry = []
+    for entry_start_time, entry_id, entry, uuk, duration in result_rows:
+        if int(DBG_LEVEL)==-10:
+            info(f"uuk = {uuk}\ncategory = {category}")
+        if uuk == category:
+            if int(DBG_LEVEL) == 4:
+                debug(f"entry = {entry}, uuk = {uuk}, duration = {duration}")
+            line = f"  {entry}:"
+            m = contract_pattern.match(line)
+            contract = get_contract_id(entry)
+            if int(DBG_LEVEL)==-10:
+                info(f"line = {line}\nentry = {entry}\ncontract = {contract}")
+            if int(DBG_LEVEL) == -2 and contract != None and contract.get('contract_id') not in entry and not m and entry != None:
+                debug(f"contract_id = {contract}\nentry = {entry}")
+            if contract != None and contract.get('contract_id') not in entry and not m and entry != None:
+                entry = f"{entry} {contract.get('contract_id')}"
+            if int(DBG_LEVEL) == -2:
+                debug(f"contract_id = {contract}\nAFTER CHECK entry = {entry}")
+            line = f"  {entry}:"
+            m = contract_pattern.match(line)
+            if int(DBG_LEVEL) == -98:
+                debug(f"get_UK_and_UUK [contract] -> contract: {contract}")
+            if not m and entry != None:
+                warning(f"  {entry}"," <- Missing contract no in entry")
+                prompt  = (f"Möchten sie den Eintrag hier nun korrigieren? {entry}? [J/n]: ")
+                answer = input_with_prefill(prompt, "", "")
+                if answer in ("", "j", "ja", "y", "yes"):
+                    entry_new = input_with_prefill("Bearbeiten von : ", entry)
+                    info("Changed entry : ", entry_new)
+                    if entry != entry_new:
+                        prompt = (f"Möchten Sie den/die Einträge auch in der heco time.db für " +
+                                            get_fore_color("YELLOW") + Style.BRIGHT +
+                                            f"{args.year} KW {args.week}" + Style.RESET_ALL +
+                                            f" nun korrigieren? {entry}? [j/N]: ")
+
+                        answer = input_with_prefill(prompt, "", "")
+                        if answer in ("j", "ja", "y", "yes"):
+                            sql_params = [entry_new, entry, monday.strftime("%Y-%m-%d"), sunday.strftime("%Y-%m-%d")]
+                            cursor.execute(queries.update_entry, sql_params)
+                            conn.commit()
+                        else:
+                            print()
+                            info("Keine Änderung vorgenommen für " +
+                                 get_fore_color("YELLOW") + Style.BRIGHT +
+                                 f"{args.year} KW {args.week} von Entry " +
+                                 get_fore_color("BLUE")
+                                 + f"{entry}" + Style.RESET_ALL + " in : ",
+                                 "heco time.db")
+                        entry = entry_new
+            added = False
+            for e in uk_entry:
+              if (
+                      contract is not None and
+                      e.get('contract_id') is not None and
+                      contract.get('contract_id') in e.get('contract_id')
+              ):
+
+                    e['duration'] += duration
+                    e['description'] = f"{contract.get('keyword')} {contract.get('task')} {contract.get('contract_id')}" if contract is not None else e['description']
+                    added = True
+                    if int(DBG_LEVEL) == -98:
+                        debug(f"get_UK_and_UUK [TOTALED BY CONTRACT] -> uk_entry : {uk_entry}")
+                    break
+            if not added:
+                if int(DBG_LEVEL) == -98:
+                    debug(f"get_UK_and_UUK [ADDED] -> entry : {entry}, uuk: {uuk.strip()}, duration: {duration}, contract: {contract}")
+
+                if contract is not None:
+                    entry = f"{contract.get('keyword')} {contract.get('task')} {contract.get('contract_id')}"
+                if int(DBG_LEVEL) == -98:
+                    debug(f"get_UK_and_UUK [DESC CHANGED TO CONTRACT DESC] -> entry : {entry}, uuk: {uuk.strip()}, duration: {duration}, contract: {contract}")
+
+                uk_entry.append({
+                    "entry": entry,
+                    "uuk": uuk.strip(),
+                    "duration": duration,
+                    "contract_id": contract.get('contract_id') if contract is not None else None,
+                    "task": contract.get('task') if contract is not None else None
+                })
+
+    if int(DBG_LEVEL) == -98:
+        debug(f"get_UK_and_UUK: uk_entry = {uk_entry}")
+    if uk_entry:
+        return uk_entry
+
+if os.path.exists(config_file):
+    get_config("read_config")
+    if not auto_migration() and args.init_heco is None:
+        sys.exit(1)
+else:
+    warning(f"Keine Konfigurationsdatei gefunden:", config_file)
+    # Automigration vorher durchlaufen lassen, falls es Änderungen gab die angepassterden müssen:
+
+    if not auto_migration():
+        sys.exit(1)
+    else:
+        get_config("no_config")
+importlib.invalidate_caches()
+
+# Setze Pfad, wenn sqlite3_queries im Unterverzeichnis liegt (z. B. ./lib/)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
+if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+    dbms = importlib.import_module('psycopg')
+    queries = importlib.import_module('pg_queries')
+
+initialize_contracts_db()
+
+if args.init_heco is not None:
+    if args.init_heco is True:
+        init_heco()  # Ohne KW
+    else:
+        init_heco(args.init_heco)  # Mit KW
+    sys.exit(0)
+
+if args.add_contract_keyword:
+    set_contract_keywords([])
+    sys.exit(0)
+
+if args.show_keywords:
+    show_contract_keywords()
+    sys.exit(0)
+
+if args.delete_keyword:
+    delete_contract_keyword()
+    sys.exit(0)
+
+now = datetime.now()
+if not args.week or not args.year:
+    parse_week_env(now)
+
+try:
+    if args.week and not len(str(args.week))<3:
+        raise ValueError(f"Ungültiges Format für -w/-kw/--week: {args.week}")
+        sys.exit(1)
+    if args.year and not len(str(args.year))==4:
+        raise ValueError(f"Ungültiges Format für -y/--year: {args.year}")
+        sys.exit(1)
+
+except Exception as e:
+    warning(f"Fehler beim Parsen : ", e, "Error")
+    sys.exit(1)
+
+monday = date.fromisocalendar(args.year, args.week, 1)
+sunday = monday + timedelta(days=6)
+
+
+is_now, is_complete, missing = is_current_week_and_complete(args.database, args.year, args.week)
+
+if not is_complete and is_now and not args.configure:
+    info("Es sind noch keine Zeiten erfasst, für :", ", ".join(missing))
+    exit(1)
+
+
+projects_id_map = get_or_create_projects_id_map()
+# Example:
+# wdayhours_map = {
+#     "Mo": 8.5,
+#     "Di": 8.5,
+#     "Mi": 8.5,
+#     "Do": 8.5,
+#     "Fr": 6.0,
+# }
+wdayhours_map = get_or_create_wdayhours_map()
+
+wdayhours_sql = queries.wdayhours_sql
+if args.configure:
+    configure_interactive()
+    # Config Default Example Kommentare in config_file einsetzen:
+    update_config_comments()
+    sys.exit(0)
+
+weekhours, week = get_config()
+# Connect to the SQLite database
+db_path = args.database
+if int(DBG_LEVEL)==1:
+    debug (f"weekhours = {weekhours}")
+    debug (f"week = {week}")
+    debug (f"db_path = {db_path}")
+conn = dbms.connect(db_path)
+
+myname = extract_name()
+
+kw_report_dir = os.path.expanduser(f'{kw_report_base_dir}/{args.year}/{args.week}')
+kw_report_file = os.path.join(kw_report_dir, f"{os.getlogin()}.txt")
+
+if args.output_file:
+    if not check_directory_exists(os.path.abspath(args.output_file)):
+        print(get_fore_color("RED") + Style.BRIGHT + f"Der angegebe Pfade/Verzeichnis exsistiert nicht!: {os.path.dirname(args.output_file)}" + Style.RESET_ALL, file=sys.stderr)
+    else:
+        kw_report_file = os.path.abspath(args.output_file)
+
+# Register custom SQL function to check for ISO week
+if not config.has_option("Database", "dbms") or config.get("Database", "dbms") == "sqlite3":
+    conn.create_function("isoweek", 3, isoweek)
+cursor = conn.cursor()
+
+sql = queries.total_per_project
+
+if args.dry_run:
+    info("Dry-Run Mode is: ", "Active!!!")
+
+if not sys.stdout.isatty():
+    info("stdout redirect is "," Active!")
+    info("Prompt inputs will not be auto filled!", "")
+
+params = []
+if args.week and args.year:
+    sql = queries.total_per_project_by_week
+    params.extend([monday.strftime("%Y-%m-%d"), sunday.strftime("%Y-%m-%d")])
+
+#sql += "GROUP BY p.id, p.key, p.description\nORDER BY p.id DESC;"
+if int(DBG_LEVEL) == 6:
+    debug(f"sql = {sql}")
+if args.week and args.year:
+    debug(f"start = {args.year}, {args.week}")
+    debug(f"stop = {args.year}, {args.week}")
+
+cursor.execute(sql, params)
+rows = cursor.fetchall()
+
+# Group categories and calculate totals
+result = []
+current_parent = None
+sub_duration = 0
+
+TOTAL_SUM = 0
+
+if int(DBG_LEVEL) == 2:
+    debug(f"mapping: {mapping}")
+    debug(f"rows: {rows}")
+
+for description, duration in rows:
+    if int(DBG_LEVEL) == 3:
+        debug(f"description: {description}")
+        debug(f"   duration: {duration}")
+        debug(f"--------------------------")
+    description = description.rstrip()
+    if any(description.startswith(key) for keys in mapping.values() for key in keys):
+        continue
+
+    if duration != None:
+        TOTAL_SUM += duration
+    is_sub = description.startswith("  ")
+    if int(DBG_LEVEL) == -10 and is_sub:
+        debug(f"-------------------------\nis_sub = {is_sub}\ndescription: {description}")
+        debug(f"duration: {duration}\n-------------------------")
+    if is_sub:
+        if int(DBG_LEVEL) == 5 or int(DBG_LEVEL) == -2:
+            debug(f"IS SUB -> description: {description}")
+            debug(f"IS SUB -> duration: {duration}")
+        if duration != None:
+            sub_duration += duration
+        # Entry als UK aus Tabelle entries holen, passend zur Thematik:
+        #    # "Organisation" als UUK
+        #    # "Sacharbeit abrechenbar" als UUK
+        #    # "Sacharbeit andere*" als UUK
+        #    # description = "AUFTRAG #1234"
+        #    #   Beispiel: OpenSlides #3970: 2,8
+        #    #               Organisation: 1
+        #    #               Sacharbeit abrechenbar: 1,6
+        #    #               Sacharbeit andere*: 0,2
+#TODO: Ausgabe reaprieren!!!
+        if ("  Organisation" == description or "  Organisation" == description or
+                "  Sacharbeit abrechenbar" == description or
+                "  Sacharbeit andere*" == description):
+            if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -10:
+                debug(f"IS Auftrag UUK -> description: {description}")
+            uk_entries = get_UK_and_UUK(conn, sql, description, params)
+            if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -10:
+                debug(f"uk_entries = {uk_entries}")
+            for row in uk_entries:
+                debug(f"row = {row}")
+                entry_description = f"  {row['entry']}"
+                uuk = row['uuk']
+                entry_duration = row['duration']
+                if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -10:
+                    debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+
+                added = False
+                if result != None and (int(DBG_LEVEL) == 1 or int(DBG_LEVEL) == -2):
+                    debug(f"IS Auftrag UUK -> description: {description}\n-------------------\nresult = {result}\n-------------------")
+                if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+                    for r in result:
+                        if 'contract_id' in r and r['contract_id'] == row['contract_id']:
+                            r['duration'] += entry_duration
+                            r['uuk'].append({"description": f"  {description}", "duration": entry_duration})
+                            added = True
+                            break
+                else:
+                    row['contract_id'] = ""
+                    row['task'] = ""
+
+                if not added:
+                    if config.has_option("Database", "dbms") and config.get("Database", "dbms") == "pg":
+                        result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": [{"description": f"  {description}", "duration": entry_duration}]})
+                    else:
+                        result.append({"description": entry_description, "duration": entry_duration, "contract_id": row['contract_id'], "task": row['task'], "uuk": {"description": f"  {description}", "duration": entry_duration}})
+        else:
+            result.append({"description": description, "duration": duration, "uuk": None, "uuk_duration": None})
+    else:
+        if description == "Auftrag#":
+            if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -2:
+                debug(f"IS Auftrag UUK -> description: {description}")
+            uk_entries = get_UK_and_UUK(conn, sql, description, params)
+            if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -2:
+                debug(f"uk_entries = {uk_entries}")
+            for row in uk_entries:
+                entry_description = f"  {row['entry']}"
+                uuk = row['uuk']
+                entry_duration = row['duration']
+                if int(DBG_LEVEL) == 4 or int(DBG_LEVEL) == -2:
+                    debug(f"entry_description = {entry_description}, uuk = {uuk}, entry_duration = {entry_duration}")
+                # uuk & uuk_duration müssen hier None sein, da es eine Oberkategorien ist!
+                result.append({"description": entry_description, "duration": entry_duration, "uuk": None, "uuk_duration": None})
+
+        if description == "Auftrag#":
+            description = "Leistungserbringung"
+
+        if duration == None:
+            duration = 0
+        current_parent = {
+            "description": description,
+            "duration": duration + sub_duration,
+            "uuk": None,
+            "uuk_duration": None
+        }
+        sub_duration = 0
+        result.append(current_parent)
+
+result.reverse()
+result_old = result
+result = merge_results(result)
+if int(DBG_LEVEL) == 1:
+    debug(f"result = \n{result}")
+    debug(f"result_old = \n{result_old}")
+
+
+mo, di, mi, do, fr = get_weekday_hours_per_day(conn, args.year, args.week)
+if int(DBG_LEVEL) == 2:
+    debug(f"Mo: {mo}, Di: {di}, Mi: {mi}, Do: {do}, Fr: {fr}")
+
+wdays = {
+    "Mo": Decimal(mo),
+    "Di": Decimal(di),
+    "Mi": Decimal(mi),
+    "Do": Decimal(do),
+    "Fr": Decimal(fr)
+}
+
+# Calculate absences
+abwesenheiten = berechne_abwesenheiten(conn, args.year, args.week)
+if abwesenheiten["temp"] > 0:
+    msg = f"Unter Temp sind noch Zeiten für KW {args.week}/{args.year} nicht einsortiert!"
+    print(get_fore_color("RED") + Style.BRIGHT + "ABBRUCH: "  + Style.RESET_ALL + msg, file=sys.stderr)
+    sys.exit(1)
+
+feiertage = abwesenheiten["feiertag"]
+urlaub = abwesenheiten["urlaub"]
+krank = abwesenheiten["krank"]
+zk_minus = abwesenheiten["zk_minus"]
+abwesend = 0.0
+
+# Work hours and overtime calculation
+WORK_HOURS = TOTAL_SUM
+contract_hours = weekhours
+
+kw_stundenkonto = get_kw_overhours(args.week)
+if int(DBG_LEVEL) == -100:
+    debug(f"WORK_HOURS: {WORK_HOURS}")
+    debug(f"contract_hours: {contract_hours}")
+    debug(f"kw_stundenkonto: {kw_stundenkonto}")
+
+kw_stundenkonto -= Decimal(zk_minus)
+sign, kw_overhours_add = get_kw_overhours_add(args.week)
+
+if int(DBG_LEVEL) == -100:
+    debug(f"kw_overhours_add: {sign}{kw_overhours_add}")
+    debug(f"feiertage: {feiertage}, urlaub: {urlaub}, krank: {krank}, abwesend: {abwesend}")
+
+if float(WORK_HOURS) + float(krank) + float(urlaub) + float(feiertage) < contract_hours:
+    kw_hours_diff = float(contract_hours - WORK_HOURS)
+    if int(DBG_LEVEL)==-100:
+        debug(f"kw_hours_diff: {kw_hours_diff}")
+
+    #HOTFIX: Wird nicht in "abwesend verbucht!
+    #abwesend += float(kw_hours_diff)
+
+if int(DBG_LEVEL) == -100:
+    debug(f"final kw_stundenkonto: {kw_stundenkonto}")
+    debug(f"final kw_overhours_add: {sign}{abs(kw_overhours_add)}")
+
+# Sundenkonto : + oder - Stunden?
+if sign == "+":
+    kw_old_overhours = float(kw_stundenkonto) - float(kw_overhours_add)
+else:
+    kw_old_overhours = float(kw_stundenkonto) + float(kw_overhours_add)
+
+if int(DBG_LEVEL) == -100:
+    debug(f"kw_old_overhours: {kw_old_overhours}")
+abwesend += krank
+
+kw_should = contract_hours - (abwesend + urlaub + feiertage)
+if int(DBG_LEVEL) == -100:
+    debug(f"kw_should: {kw_should}")
+
+# Erstelle den Ordner, falls er nicht existiert
+if not os.path.exists(kw_report_dir) and not args.dry_run:
+    os.makedirs(kw_report_dir)
+
+if not os.path.exists(kw_report_file) and not args.dry_run:
+    os.system(f"touch {kw_report_file}")
+
+def get_my_tasks():
+    #info(f"xxxx = {xxxx}","")
+    return None
+
+# Final report output
+def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, abwesend,
+                    kw_old_overhours, kw_overhours_add, kw_stundenkonto, result, zk_minus,
+                    mapping, conn, wdays, myname):
+    """
+    Erzeugt die den Bericht für das Wochenfazit
+    """
+
+    global sign # siehe : oben -> Sundenkonto : + oder - Stunden?
+
+    report_lines = []
+    week_str = f"{args.year}-W{args.week:02d}"
+    report_lines.append(f"Wochenfazit: {week_str} Name: {myname}\n")
+    report_lines.append(
+        f"Arbeitsstunden: {format_decimal(work_hours)} von {format_decimal(kw_should)} "
+        f"(Vertrag: {format_decimal(contract_hours)}  Feiertage: {format_decimal(feiertage)}  "
+        f"Urlaub: {format_decimal(urlaub)}  abwesend: {format_decimal(abwesend)})"
+    )
+    #TODO: Vorzeichen BUG beheben
+    kw_overhours_add_abs = abs(round(kw_overhours_add, 2))
+
+    if int(DBG_LEVEL) == -100:
+        debug(f"sign = {sign}")
+        debug(f"kw_overhours_add = {format_decimal(kw_overhours_add)}")
+    report_lines.append(
+        f"Stundenkonto: {format_decimal(kw_old_overhours)} {sign} {format_decimal(abs(kw_overhours_add_abs))} "
+        f"= {format_decimal(kw_stundenkonto)}"
+    )
+
+    # Tagabweichungen hinzufügen (erst jetzt!)
+    report_lines.append(get_wday_diff(conn, wdays, args.year, args.week))
+
+    conn.close()
+
+    if work_hours > 0 and kw_should > 0:
+
+        # TODO: Per config option oder arg eine Uniq-Liste der Tätigkeiten der KW einfügen wenn dies gesetzt wurde.
+        my_tasks = REMINDER_TXT
+        if config.has_option('General', 'insert_tasks'):
+            if config.get("General", "insert_tasks").lower() == "true":
+                my_tasks = get_my_tasks()
+
+        # my_tasks ist noch in Arbeit
+        my_tasks = REMINDER_TXT
+        report_lines.append(f"\nFür uns miterreicht habe ich:\n  {my_tasks}\n")
+        report_lines.append(f"\nGelernt habe ich:\n  {REMINDER_TXT}\n")
+        report_lines.append(f"\nUns besser machen würde vielleicht:\n  {REMINDER_TXT}\n")
+
+        # Workload breakdown
+        report_lines.append("Stundenaufteilung:")
+        percent_part = Decimal(0.0) if work_hours == 0 else Decimal(100) / Decimal(work_hours)
+
+        groups = []
+        current_group = None
+        if int(DBG_LEVEL) == 1:
+            debug(f"generate_report: result = {result}")
+            debug(f"#############################################################################")
+        for item in result:
+            if int(DBG_LEVEL) == 1:
+                debug(f"generate_report: item = {item}")
+            is_sub = item['description'].startswith("  ")
+
+            if round(item['duration'], 2) > 0:
+                if not is_sub:
+                    if current_group:
+                        groups.append(current_group)
+                    p = round(percent_part * Decimal(round(item['duration'], 2)), 0)
+                    current_group = {
+                        "percent": p,
+                        "parent": item,
+                        "subs": []
+                    }
+                else:
+                    if current_group:
+                        current_group["subs"].append(item)
+
+        if current_group:
+            groups.append(current_group)
+
+        groups.sort(key=lambda g: g["percent"], reverse=True)
+        for group in groups:
+            p = group["percent"]
+            parent = group["parent"]
+            report_lines.append(f"{p}%: {parent['description']}: {format_decimal(round(parent['duration'], 2))}")
+            for sub in group["subs"]:
+                line = ""
+                if 'task' in sub and sub['task']:
+                    line += f"  {sub['task']} {sub.get('contract_id', '')}: {format_decimal(round(sub['duration'], 2))}"
+                else:
+                    line += f"{sub.get('description', '')}: {format_decimal(round(sub['duration'], 2))}"
+                report_lines.append(line)
+
+                if int(DBG_LEVEL) == -99:
+                    debug(f"sub = {sub}")
+                uuk_entries = sub.get('uuk')
+                if int(DBG_LEVEL) == -99:
+                    info("uuk_entries = ",uuk_entries)
+                    debug(f"config = {config.has_option('General', 'show_uuk')}")
+                if uuk_entries != None:
+                    if config.has_option("General", "show_uuk"):
+                        if config.get("General", "show_uuk").lower() == "true":
+                            if int(DBG_LEVEL) == -99:
+                                info("uuk = ",uuk_entries)
+                            if isinstance(uuk_entries, dict):
+                                if int(DBG_LEVEL) == -99:
+                                    info("uuk is dict")
+                                desc = uuk_entries['description']
+                                dur = uuk_entries['duration']
+                                if desc and dur is not None:
+                                    report_lines.append(f"{desc}: {format_decimal(round(dur, 2))}")
+
+    if zk_minus > 0:
+        report_lines.append(f"\nPS:\n  {mapping['zk_minus'][0]}: {format_decimal(round(zk_minus, 2))}")
+
+    return "\n".join(report_lines)
+
+def chgrp(path, group_name):
+    """
+    Setzt die Gruppenberechtigung für die Berichtsdatei "path" auf die eingestelle Gruppe Default "intevation"
+    """
+    try:
+        gid = grp.getgrnam(group_name).gr_gid  # GID der Gruppe holen
+        stat_info = os.stat(path)
+        os.chown(path, stat_info.st_uid, gid)  # Besitzer bleibt gleich, Gruppe ändern
+        os.chmod(path, 0o644)
+        info(f"Gruppe von '{path}'geändert auf: ", group_name)
+    except KeyError:
+        print(f"Gruppe '{group_name}' existiert nicht.")
+    except PermissionError:
+        print("Keine Berechtigung, um die Gruppenzugehörigkeit zu ändern.")
+    except Exception as e:
+        print("Fehler:", e)
+
+def run_wochenfazit(file_path):
+    """
+    Führt wochenfazit.py mit der übergebenen Datei aus und gibt die Ausgabe auf stderr aus.
+    """
+    try:
+        result = subprocess.run(
+            [wf_check_path, file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=True,
+            text=True  # für str statt bytes
+        )
+        print(result.stdout, file=sys.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f"Fehler beim Ausführen von {wf_check_path}: {e}", file=sys.stderr)
+        if e.stdout:
+            print(e.stdout, file=sys.stderr)
+
+def handle_output(report_content: str):
+    #TODO: MY_EDITOR Variable etablieren
+    """
+    Gibt den Bericht als STDOUT oder Datei zum editieren geöffnet in vim
+    """
+    if args.dry_run:
+        print(report_content)
+    else:
+        # Zielpfade vorbereiten
+        kwd = kw_report_dir
+        os.makedirs(kwd, exist_ok=True)
+
+        # Temporäre Datei erstellen
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".txt") as f:
+            f.write(report_content)
+            f.flush()
+            tempname = f.name
+
+        # Öffne vim zur Bearbeitung
+        subprocess.call(["vim", tempname])
+
+	# Nach Bearbeitung fragen, ob wochenfazit.py zur Prüfung ausgeführt werden soll (Enter = Ja)
+        prompt = (f"Soll der Bericht nun " + get_fore_color("BLUE") + Style.BRIGHT + f"'{tempname}'" + Style.RESET_ALL + f"  geprüft werden, von \n\n {wf_check_path}\n\n [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if answer in ("", "j", "ja", "y", "yes"):
+            run_wochenfazit(tempname)
+	# Nach Bearbeitung fragen, ob speichern (Enter = Ja)
+        prompt = (f"Soll der Bericht nach " + get_fore_color("BLUE") + Style.BRIGHT + f"'{kw_report_file}'" + Style.RESET_ALL + f" gespeichert werden? [J/n]: ")
+        answer = input_with_prefill(prompt, "", "").strip().lower()
+        if answer in ("", "j", "ja", "y", "yes"):
+            shutil.copy(tempname, kw_report_file)
+            os.remove(tempname)
+            print(get_fore_color("GREEN") + Style.BRIGHT + f"\n✅ Bericht gespeichert unter: {kw_report_file}" + Style.RESET_ALL, file=sys.stderr)
+            chgrp(kw_report_file, args.group)
+        else:
+            os.remove(tempname)
+            print(get_fore_color("RED") + Style.BRIGHT + f"X Bericht wurde verworfen." + Style.RESET_ALL, file=sys.stderr)
+
+REPORT = generate_report(WORK_HOURS, kw_should, contract_hours, feiertage, urlaub,
+                         abwesend, kw_old_overhours, kw_overhours_add, kw_stundenkonto,
+                         result, zk_minus, mapping, conn, wdays, myname)
+
+# Config Default Example Kommentare in config_file einsetzen:
+update_config_comments()
+
+# REPORT AUSGEBEN
+handle_output(REPORT)

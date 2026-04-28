@@ -183,24 +183,15 @@ def get_kw_overhours(conn=None, kw=None):
             sys.exit(0)
     return sign, result
 
-def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
+def get_kw_overhours_add(conn=None, kw=None, zk=None, za=None, date=None, t=None):
     fname = get_function_name()
-    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-        info(f"{fname}:\nkw = {kw}, zk = {zk}, za = {za}, date = {date}, t = {t}")
-    if kw:
-        # Wenn keine Startdatum angegeben ist, setze das Startdatum auf Montag der Kalenderwoche
-        # Definiere das Jahr und die Kalenderwoche
-        year = datetime.now().year
-        
-        # Berechne den Montag der Kalenderwoche
-        monday = datetime.strptime(f"{year}-W{kw}-1", "%Y-W%W-%w").date()
 
-        # Gib das Datum im Format "Y-m-d" zurück
+    if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"{fname}: kw={kw}, zk={zk}, za={za}, date={date}, t={t}")
+
+    if kw:
+        year = datetime.now().year
         monday_str = get_monday_of_week(kw, year)
-        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            info(f"monday = {monday}")
-            info(f"monday_str = {monday_str}")
-            
         if not date:
             date = monday_str
     else:
@@ -208,57 +199,73 @@ def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
             date = datetime.today().strftime("%Y-%m-%d")
         else:
             date = get_date(date)
-        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-            info(f"date = {date}")        
 
-    # Cursor-Objekt erstellen
     cursor = conn.cursor()
-
-    # Alle Einträge aus der Tabelle projects auswählen
     cursor.execute("SELECT * FROM projects")
-
-    # Ergebnis abrufen
     projects = cursor.fetchall()
 
-    total_kw_time = 0
-    # Ausgabe der Projekte
-    day_total_time = 0
+    total_work_time = 0
+    total_zeitkonto_adjust = 0
+
     for project in projects:
+
         project_id = project[0]
         project_name = project[2]
+
         if kw:
             total_time = get_weekly_total_time(project_id, date, kw, cursor)
         else:
             total_time = get_total_time(project_id, date)
-            day_total_time += total_time
 
-        if not "Zeitkonto Abzug" in project_name:
-            total_kw_time += total_time
-        if za and "Zeitkonto Abzug" in project_name:
-            total_kw_time -= total_time
+        # ------------------------------------------------------
+        # BUGFIX: ZKA Zeitkonto Abzug/Auszahlung
+        # Arbeitszeit vs Zeitkonto-Korrektur trennen
+        # ZKA wird in hcwr über zk_minus bei >0 von
+        # kw_stundenkonto -= zk_minus abgezogen
+        # wird hier in HCWR_GLOBALS.ZKA_ADDJUSTMENT
+        # gespeichert und erst in hcwr bei zk_minus
+        # Berechnung berücksichtig, wenn zk_minus == 0 ist,
+        # weil man gerade in einer späteren KW als der,
+        # wo ZKA eingetragen wurde, ein Wochenfazit erstellt.
+        # Sonst falsche Werte rauskommen !!!
+        # Ist ein Workaround, das funktioniert!!!
+        # ------------------------------------------------------
+        if "Zeitkonto Abzug" in project_name:
+            total_zeitkonto_adjust -= total_time
+            HCWR_GLOBALS.ZKA_ADDJUSTMENT += total_time
+        else:
+            total_work_time += total_time
+
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"{project_name} -> {total_time}")
 
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         info(f"total_time = {total_time}")
-        info(f"total_kw_time = {total_kw_time}")
+        info(f"total_work_time = {total_work_time}")
+        info(f"total_zeitkonto_adjust = {total_zeitkonto_adjust}")
+
     weekhours = int(float(HCWR_GLOBALS.CFG.get('General', 'weekhours')) * 3600)
-    firstday = HCWR_GLOBALS.CFG.get('Onboarding', 'firstday') 
+
     if kw:
-        overhours = total_kw_time - weekhours # Ueberstunden in Sekunden
-        if overhours < 0:
-            p = '-'
-        else:
-            p = '+'
+
+        overhours = total_work_time - weekhours
+
+        p = "+" if overhours >= 0 else "-"
+
         lines = []
-        if not t and not zk:    
-            lines.append(f"KW {kw}: {int(total_kw_time)}")
+
+        if not t and not zk:
+            lines.append(f"KW {kw}: {int(total_work_time)}")
             lines.append(f"KW Zeitkonto: {int(overhours)}")
             result = lines
+
         elif t and not zk:
-            lines.append(f"KW {kw}: {int(total_kw_time)}")
+            lines.append(f"KW {kw}: {int(total_work_time)}")
             result = lines
+
         elif not t and zk:
             result = [p, overhours]
-            
+
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"result = {result}")
         else:
@@ -272,10 +279,10 @@ def get_kw_overhours_add(conn=None,kw=None,zk=None,za=None,date=None,t=None):
                 sys.exit(0)
             else:
                 return result
-    else:
-        print(f"{date} Total: {int(total_kw_time)}")
 
-    # Datenbankverbindung schließen
+    else:
+        print(f"{date} Total: {int(total_work_time)}")
+
     conn.close()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         prompt = "Enter für fortfahren oder N für Nein "

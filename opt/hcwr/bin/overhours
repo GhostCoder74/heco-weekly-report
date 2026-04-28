@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+# Copyright (C) 2023-2025 by Intevation GmbH
+# overhours.sh for weekly over hours report generation from heco time.db
+# in conjunction with hkwdreport.sh, mkwreport.sh
+# Python3 Based Executable Script
+# Version: 1.0.3
+# Authors:
+# Christian Klose <cklose@intevation.de>
+#
+# This program is free software under the GNU GPL (>=v2)
+
+import argparse
+import configparser
+import os
+import sys
+import subprocess
+import datetime
+import colorama
+from colorama import Fore, Style
+
+config_file = os.path.expanduser("~/.config/hkwreport.conf")
+
+def get_config():
+    if not os.path.exists(config_file):
+        print("Config file not found.")
+        create_config_with_weekhours()
+        create_config_with_firstday()
+
+    config_parser = configparser.ConfigParser()
+    config_parser.read(config_file)
+    
+    
+    if 'Onboarding' not in config_parser or 'firstday' not in config_parser['Onboarding']:
+        print("'firstday' not found in 'Onboarding' section of config file.")
+        create_config_with_firstday()
+
+    if 'General' not in config_parser or 'weekhours' not in config_parser['General']:
+        print("'weekhours' not found in 'General' section of config file.")
+        create_config_with_weekhours()
+    
+    # Nach den möglichen Änderungen nochmal lesen
+    config_parser.read(config_file)
+    firstday = config_parser['Onboarding']['firstday']
+    debug (f"firstday = {firstday}")
+    year, week = get_calendar_week(firstday)
+
+    if year != datetime.date.today().year:
+        return 1
+    else:
+        return week
+
+def create_config_with_weekhours():
+    # Benutzer nach den Wochenstunden fragen
+    weekhours = input("Bitte ihre Wochenarbeitsstunden eingeben: ")
+
+    # Wochenstunden in Sekunden umwandeln
+    weekhours_seconds = int(weekhours) * 3600
+
+    # Neue Konfigurationsdatei erstellen
+    config = configparser.ConfigParser()
+    config['General'] = {'weekhours': str(weekhours_seconds // 3600)}  # In Stunden speichern
+
+    # Konfigurationsdatei speichern
+    if not os.path.exists(config_file):
+        with open(config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
+        update_config("General", "weekhours", "40")
+    print(f"Config file updated with weekhours: {weekhours}")
+
+def create_config_with_firstday():
+    # Benutzer nach den ersten Arbeitstag fragen
+    firstday = input("Bitte ihre ersten Arbeitstag eingeben (Format = YYYY-MM-DD): ")
+
+    # Neue Konfigurationsdatei erstellen
+    config = configparser.ConfigParser()
+    config['Onboarding'] = {'firstday': str(firstday)}
+
+    # Konfigurationsdatei speichern
+    if not os.path.exists(config_file):
+        with open(config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
+        update_config("Onboarding", "firstday", firstday)
+    print(f"Config file updated with firstday: {firstday}")
+
+def update_config(section, key, value):
+    config = configparser.ConfigParser()
+    
+    # Falls die Datei existiert, einlesen
+    if os.path.exists(config_file):
+        config.read(config_file)
+        
+        # Sektion anlegen, falls nicht vorhanden
+        if section not in config:
+            config[section] = {}
+            
+            # Wert setzen oder überschreiben
+            config[section][key] = value
+            
+            # Datei schreiben (überschreibt die Datei, aber mit dem aktualisierten Inhalt)
+            with open(config_file, 'w') as configfile:
+                config.write(configfile)
+
+def get_calendar_week(date_str):
+    """
+    Gibt die Kalenderwoche (ISO 8601) zu einem Datum im Format 'YYYY-MM-DD' zurück.
+    Rückgabe: (jahr, kw) als Tuple
+    """
+    try:
+        date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        iso_year, iso_week, _ = date_obj.isocalendar()
+        return iso_year, iso_week
+    except ValueError:
+        raise ValueError("Ungültiges Datumsformat. Erwartet: YYYY-MM-DD")
+
+# For colorized output
+colorama.init(autoreset=True)
+# Definition of colors
+def get_fore_color(color):
+    """
+    Returns the color code for text foreground in the console based on the
+    given color name.
+
+    :param color: A string representing the color name.
+    Available color names are:
+                 - "RED" (default for error messages)
+                 - "MAGENTA"
+                 - "GREEN"
+                 - "YELLOW" (default for debug messages)
+                 - "BLUE"
+                 - "WHITE" (default for info messages)
+
+    :return: The color code for the specified color, or Fore.RESET if the color
+             name is not recognized.
+    """
+    colors = {
+        "RED": Fore.RED,        # Default für Error
+        "MAGENTA": Fore.MAGENTA,
+        "GREEN": Fore.GREEN,
+        "YELLOW": Fore.YELLOW,  # Default für Debug
+        "BLUE": Fore.BLUE,
+        "WHITE": Fore.WHITE,    # Default für Info
+        # Weitere Farben hier hinzufügen, falls gewünscht
+    }
+    return colors.get(color, Fore.RESET)
+
+def to_seconds(time_str):
+    hours, minutes, seconds = map(int, time_str.split(':'))
+    return hours * 3600 + minutes * 60 + seconds
+
+def to_time_format(total_seconds):
+    hours, remainder = divmod(total_seconds, 3600)
+    debug (f"hours, remainder => {hours}, {remainder}")
+    minutes, seconds = divmod(remainder, 60)
+    debug (f"minutes, seconds => {minutes}, {seconds}")
+    result = f'{hours:02}:{minutes:02}:{seconds:02}'
+    debug (f"result to_time_format => {total_seconds} = result")
+    return result
+
+def debug(msg):
+    if args.debug:
+        print(get_fore_color("YELLOW") + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
+
+if __name__ == '__main__':
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-w", "-kw", "--calendar-week", help="calendar week", type=int)
+    parser.add_argument("-debug", help="Enable debug output", action='store_true')
+    args = parser.parse_args()
+
+if len(sys.argv) > 1 and args.calendar_week:
+    kw = int(args.calendar_week)
+else:
+    kw = datetime.date.today().isocalendar()[1]
+
+times = []
+
+# KW des 1. Arbeitstages
+first_kw = get_config()
+debug (f"first_kw = {first_kw}")
+for i in range(first_kw, kw + 1):
+    result = subprocess.run(["hkwdreport", "-za", "-kw", str(i)], stdout=subprocess.PIPE, text=True)
+    output = result.stdout
+    lines = output.split('\n')
+    for line in lines:
+        if 'KW Zeitkonto' in line:
+            time_str = line.split()[2]
+            debug (time_str)
+            times.append(time_str)
+
+sum_seconds = 0
+
+for t in times:
+    debug (f"t => {t} => t Seconds=> {to_seconds(t)}")
+    if t.startswith('-'):
+        t = t[1:]
+        debug (t)
+        sum_seconds -= to_seconds(t)
+    else:
+        t = t[1:]
+        debug (t)
+        sum_seconds += to_seconds(t)
+
+    debug (f"sum_seconds => {sum_seconds}")
+
+if sum_seconds < 0:
+    sum_seconds = sum_seconds * -1
+    print(f"Summe: -{to_time_format(sum_seconds)}")
+else:
+    print(f"Summe: +{to_time_format(sum_seconds)}")

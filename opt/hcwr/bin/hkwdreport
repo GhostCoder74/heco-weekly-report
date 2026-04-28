@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+# Copyright (C) 2023-2024 by Intevation GmbH
+# hkwdreport for weekly report generation from heco time.db
+# in conjuntion with overhours
+# Python3 Based Executable Script
+# Version: 1.0.3
+# Authors:
+# Christian Klose <cklose@intevation.de>
+#
+# This program is free software under the GNU GPL (>=v2)
+import argparse
+import configparser
+import os
+import sqlite3
+from datetime import datetime, timedelta, date
+import re
+
+config_file = os.path.expanduser("~/.config/hkwreport.conf")
+
+def debug(msg):
+    if args.debug:
+        print(get_fore_color("YELLOW") + Style.BRIGHT + f"DEBUG: {msg}" + Style.RESET_ALL, file=sys.stderr)
+
+def validate_date(date_string):
+    # Definieren Sie einen regulären Ausdruck, um das Format YYYY-MM-DD zu überprüfen
+    pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+    if pattern.match(date_string):
+        return True
+    else:
+        return False
+
+def get_date(days_ago):
+    if validate_date(days_ago):
+        today = date.fromisoformat(args.date)
+        return today.strftime("%Y-%m-%d")
+    else:
+        if days_ago:
+            days_ago = int(days_ago)
+            if days_ago > 0:
+                today = date.today()
+                return today.strftime("%Y-%m-%d")
+            else:
+                today = date.today()
+                delta = timedelta(days=abs(days_ago))
+                return (today - delta).strftime("%Y-%m-%d")
+        else:
+            return date.today().strftime("%Y-%m-%d")
+
+def get_total_time(project_id, date_str):
+    # Datum in datetime-Objekt konvertieren
+    date = datetime.strptime(date_str, "%Y-%m-%d")
+
+    # Alle Einträge aus der Tabelle entries mit passender project_id und Datum auswählen
+    cursor.execute("SELECT * FROM entries WHERE project_id=? AND start_time BETWEEN ? AND ?", 
+                   (project_id, date, date + timedelta(days=1)))
+
+    # Ergebnis abrufen
+    entries = cursor.fetchall()
+
+    # Gesamtzeit in Sekunden berechnen
+    total_time = sum((datetime.strptime(entry[3][:19], '%Y-%m-%d %H:%M:%S') - datetime.strptime(entry[2][:19], '%Y-%m-%d %H:%M:%S')).total_seconds() for entry in entries)
+
+    # Zeit in Stunden, Minuten und Sekunden umwandeln
+    hours, remainder = divmod(total_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Ausgabe der Gesamtzeit als String im Format "hh:mm:ss"
+    total_time_str = '{:02d}:{:02d}:{:02d}'.format(int(hours), int(minutes), int(seconds))
+    return total_time
+
+
+def get_weekly_total_time(project_id, start_date, kw):
+    # Wenn kein Startdatum angegeben ist, setze das Startdatum auf Montag der Kalenderwoche
+    if not start_date:
+        date = datetime.strptime(kw + "-1", "%Y-%W-%w")
+        #date = datetime.strptime(kw, "%Y-%W-%w")
+        start_date = (date - timedelta(days=date.weekday())).strftime("%Y-%m-%d")
+    else:
+        start_date = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+
+    # Gesamtzeit von Montag bis Sonntag berechnen
+    total_time = 0
+    for i in range(7):
+        day = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i)
+        tresult = get_total_time(project_id, day.strftime("%Y-%m-%d"))
+        total_time += tresult
+        debug(f"{day} => tresult: {tresult}")
+    
+
+    debug(f"total_time = {total_time}")
+
+    return total_time
+
+def get_config():
+    if not os.path.exists(config_file):
+        print("Config file not found.")
+        create_config_with_weekhours()
+        create_config_with_firstday()
+
+    config_parser = configparser.ConfigParser()
+    config_parser.read(config_file)
+    
+    
+    if 'Onboarding' not in config_parser or 'firstday' not in config_parser['Onboarding']:
+        print("'firstday' not found in 'Onboarding' section of config file.")
+        create_config_with_firstday()
+
+    if 'General' not in config_parser or 'weekhours' not in config_parser['General']:
+        print("'weekhours' not found in 'General' section of config file.")
+        create_config_with_weekhours()
+    
+    # Nach den möglichen Änderungen nochmal lesen
+    config_parser.read(config_file)
+    weekhours = int(config_parser['General']['weekhours']) * 3600
+    firstday = config_parser['Onboarding']['firstday']
+    return weekhours, firstday
+
+def create_config_with_weekhours():
+    # Benutzer nach den Wochenstunden fragen
+    weekhours = input("Bitte ihre Wochenarbeitsstunden eingeben: ")
+
+    # Wochenstunden in Sekunden umwandeln
+    weekhours_seconds = int(weekhours) * 3600
+
+    # Neue Konfigurationsdatei erstellen
+    config = configparser.ConfigParser()
+    config['General'] = {'weekhours': str(weekhours_seconds // 3600)}  # In Stunden speichern
+
+    # Konfigurationsdatei speichern
+    if not os.path.exists(config_file):
+        with open(config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
+        update_config("General", "weekhours", "40")
+    print(f"Config file updated with weekhours: {weekhours}")
+
+def create_config_with_firstday():
+    # Benutzer nach den ersten Arbeitstag fragen
+    firstday = input("Bitte ihre ersten Arbeitstag eingeben (Format = YYYY-MM-DD): ")
+
+    # Neue Konfigurationsdatei erstellen
+    config = configparser.ConfigParser()
+    config['Onboarding'] = {'firstday': str(firstday)}
+
+    # Konfigurationsdatei speichern
+    if not os.path.exists(config_file):
+        with open(config_file, 'w') as configfile:
+            config.write(configfile)
+    else:
+        update_config("Onboarding", "firstday", "2024-01-01")
+    print(f"Config file updated with firstday: {firstday}")
+
+def update_config(section, key, value):
+    config = configparser.ConfigParser()
+    
+    # Falls die Datei existiert, einlesen
+    if os.path.exists(config_file):
+        config.read(config_file)
+        
+        # Sektion anlegen, falls nicht vorhanden
+        if section not in config:
+            config[section] = {}
+            
+            # Wert setzen oder überschreiben
+            config[section][key] = value
+            
+            # Datei schreiben (überschreibt die Datei, aber mit dem aktualisierten Inhalt)
+            with open(config_file, 'w') as configfile:
+                config.write(configfile)
+
+def get_monday_of_week(kw, year):
+    # Monday is 1, Sunday is 7 in ISO format
+    monday = date.fromisocalendar(year, kw, 1)
+    return monday.strftime("%Y-%m-%d")
+
+if __name__ == '__main__':
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--date", help="Date to calculate total time for (YYYY-MM-DD format)")
+    parser.add_argument("-debug", help="Enable debug output", action='store_true')
+    parser.add_argument("-w", "-kw", "--calendar-week", help="calendar week", type=int)
+    parser.add_argument("-zk", action="store_true", help="Gibt nur Zeitkontostand aus")
+    parser.add_argument("-za", action="store_true", help="Gibt nur Zeitkontostand inkl. Abzug aus")
+    parser.add_argument("-t", action="store_true", help="Gibt nur KW Stunden aus")
+    args = parser.parse_args()
+    if args.calendar_week:
+        # Wenn keine Startdatum angegeben ist, setze das Startdatum auf Montag der Kalenderwoche
+        # Definiere das Jahr und die Kalenderwoche
+        year = datetime.now().year
+        kw = args.calendar_week 
+
+        # Berechne den Montag der Kalenderwoche
+        monday = datetime.strptime(f"{year}-W{kw}-1", "%Y-W%W-%w").date()
+
+        # Gib das Datum im Format "Y-m-d" zurück
+        monday_str = get_monday_of_week(kw, year)
+        if not args.date:
+            args.date = monday_str
+    else:
+        if not args.date:
+            args.date = datetime.today().strftime("%Y-%m-%d")
+        else:
+            args.date = get_date(args.date)
+
+
+    # Pfad zur time.db-Datei im Home-Verzeichnis des Benutzers
+    db_path = os.path.expanduser("~/.heco/time.db")
+
+    # create a connection to the database
+    conn = sqlite3.connect(db_path)
+
+    # Cursor-Objekt erstellen
+    cursor = conn.cursor()
+
+    # Alle Einträge aus der Tabelle projects auswählen
+    cursor.execute("SELECT * FROM projects")
+
+    # Ergebnis abrufen
+    projects = cursor.fetchall()
+
+    total_kw_time = 0
+    # Ausgabe der Projekte
+    if not args.t and not args.zk:
+        print("Projects:")
+    day_total_time = 0
+    for project in projects:
+        project_id = project[0]
+        project_name = project[2]
+        if args.calendar_week:
+            total_time = get_weekly_total_time(project_id, args.date, args.calendar_week)
+        else:
+            total_time = get_total_time(project_id, args.date)
+            day_total_time += total_time
+
+        hours, remainder = divmod(total_time, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if "Zeitkonto Abzug" in project_name:
+            sign = "-"
+        else:
+            sign = ""
+
+        #if total_time >= 3600:
+        if not args.t and not args.zk:
+            print(f"{project_name}: {sign}{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+        if not "Zeitkonto Abzug" in project_name:
+            total_kw_time += total_time
+        if args.za and "Zeitkonto Abzug" in project_name:
+            total_kw_time -= total_time
+
+    weekhours, firstday = get_config()
+    if args.calendar_week:
+        #weekhours = 144000    # 40 Stunden Woche in Sekunden
+        if total_kw_time > weekhours:
+            p = '+'
+            overhours = total_kw_time - weekhours # Ueberstunden in Sekunden
+            whours, wremainder = divmod(overhours, 3600)
+            wminutes, wseconds = divmod(wremainder, 60)
+        else:
+            p = '-'
+            overhours = weekhours - total_kw_time # um Ueberstunden in Sekunden fuer minus Zeiten zu erhalten
+            whours, wremainder = divmod(overhours, 3600)
+            wminutes, wseconds = divmod(wremainder, 60)
+
+        hours, remainder = divmod(total_kw_time, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        if not args.t and not args.zk:
+            print(f"KW {args.calendar_week}: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+            print(f"KW Zeitkonto: {p}{int(whours):02d}:{int(wminutes):02d}:{int(wseconds):02d}")
+        elif args.t and not args.zk:
+            print(f"KW {args.calendar_week}: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+        elif not args.t and args.zk:
+            print(f"KW Zeitkonto: {p}{int(whours):02d}:{int(wminutes):02d}:{int(wseconds):02d}")
+    else:
+        hours, remainder = divmod(day_total_time, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"{args.date} Total: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+
+
+    # Datenbankverbindung schließen
+    conn.close()

@@ -274,6 +274,9 @@ class myGlobals:
     WEEKDAY_MAP = {"Mo": "1", "Di": "2", "Mi": "3", "Do": "4", "Fr": "5", "Sa": "6", "So": "7"}
     SIGN = None
 
+    OVERHOURS_KW = {}
+    ZKA_ADDJUSTMENT = 0
+
     CONTRACT_HOURS = 0
     KW_REPORT_DIR = None
     KW_REPORT_FILE = None

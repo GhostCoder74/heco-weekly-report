@@ -28,7 +28,8 @@
 
 LOA_exists_sql = """
     SELECT id, description FROM entries
-    WHERE id = %s
+    WHERE date(start_time) = date(%s)
+      AND id = %s
 """
 LOA_delete_sql = """
     DELETE FROM entries

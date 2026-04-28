@@ -206,7 +206,7 @@ elif MODULE_DIR not in sys.path:
         from hcwr_remote_mod import ssh_config_check, checkNfetch_file_from_NIS
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_config_mod")
-        from hcwr_config_mod import update_config_comments, extract_name, get_name_from_config, get_config, get_calendar_week
+        from hcwr_config_mod import update_config_comments, extract_name, get_name_from_config, get_config, get_calendar_week, configure_interactive
         if int(HCWR_GLOBALS.DBG_LEVEL) > 0:
             print(f"[DEBUG] Loading module: hcwr_config_mod")
         from hcwr_config_mod import get_or_create_projects_id_map, get_or_create_wdayhours_map, parse_week_env
@@ -607,7 +607,7 @@ if AB:
 
 myname = extract_name()
 
-HCWR_GLOBALS.KW_REPORT_DIR = os.path.expanduser(f'{HCWR_GLOBALS.KW_REPORT_BASE_DIR}/{HCWR_GLOBALS.args.year}/{HCWR_GLOBALS.args.week}')
+HCWR_GLOBALS.KW_REPORT_DIR = os.path.expanduser(f'{HCWR_GLOBALS.KW_REPORT_BASE_DIR}/{HCWR_GLOBALS.args.year}/{HCWR_GLOBALS.args.week:02d}')
 HCWR_GLOBALS.KW_REPORT_FILE = os.path.join(HCWR_GLOBALS.KW_REPORT_DIR, f"{os.getlogin()}.txt")
 if PROC_NAME == "hcwr":
     if HCWR_GLOBALS.args.output_file:
@@ -916,7 +916,7 @@ if abwesenheiten.get("zk_minus"):
     zk_minus = abwesenheiten["zk_minus"]
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:903"
+    # DBG_BREAK_POINT="hcwr:904"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"abwesenheiten = {abwesenheiten}")
@@ -931,7 +931,7 @@ if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
 
 abwesend = 0
 
-# Work hours and overtime calculation
+# Work hours and overtime calculationget_kw_overhours
 WORK_HOURS = TOTAL_SUM
 HCWR_GLOBALS.CONTRACT_HOURS = weekhours
 
@@ -939,6 +939,10 @@ progress_bar(HCWR_GLOBALS.PBAR_VAL,HCWR_GLOBALS.PBAR_MAX)
 HCWR_GLOBALS.PBAR_VAL += 1
 
 s, kw_stundenkonto = get_kw_overhours(conn, HCWR_GLOBALS.args.week)
+# BUGFIX: ZKA Zeitkonto Abzug/Auszahlung
+if HCWR_GLOBALS.ZKA_ADDJUSTMENT > 0 and zk_minus == 0:
+    zk_minus += HCWR_GLOBALS.ZKA_ADDJUSTMENT
+
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     # DBG_BREAK_POINT="hcwr:897"
     wai = int(whereami()['line'])
