@@ -154,8 +154,10 @@ def generate_report(work_hours, kw_should, contract_hours, feiertage, urlaub, ab
                                 if desc and dur is not None:
                                     report_lines.append(f"{desc}: {SecToHours(dur)}")
 
-    if zk_minus > 0:
-        report_lines.append(f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {SecToHours(zk_minus)}")
+    if ( zk_minus > 0 and getattr(HCWR_GLOBALS, "ZKA_IN_CURRENT_WEEK", False)):
+        report_lines.append(
+            f"\nPS:\n  {HCWR_GLOBALS.MAPPING['zk_minus'][0]}: {SecToHours(zk_minus)}"
+        )
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
         print("\n".join(report_lines))
         show_process_route()

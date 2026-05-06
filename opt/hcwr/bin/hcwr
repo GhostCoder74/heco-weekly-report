@@ -987,9 +987,9 @@ if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"kw_hours_diff: {kw_hours_diff}")
-        info(f"final kw_stundenkonto: {kw_stundenkonto}")
-        info(f"final kw_overhours_add: {kw_overhours_add}")
-        info(f"final kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
+        info(f"kw_stundenkonto: {kw_stundenkonto}")
+        info(f"kw_overhours_add: {kw_overhours_add}")
+        info(f"kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
         prompt = "Enter für fortfahren oder N für Nein "
         answer = input_with_prefill(prompt, "", '')
         if answer in ("N", "n"):
@@ -1000,6 +1000,20 @@ if HCWR_GLOBALS.SIGN == "+":
     kw_old_overhours = (kw_stundenkonto - abs(kw_overhours_add))
 else:
     kw_old_overhours = (kw_stundenkonto + abs(kw_overhours_add))
+
+if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+    # DBG_BREAK_POINT="hcwr:1010"
+    wai = int(whereami()['line'])
+    if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
+        info(f"kw_hours_diff: {kw_hours_diff}")
+        info(f"final kw_old_overhours: {kw_old_overhours}")
+        info(f"final kw_stundenkonto: {kw_stundenkonto}")
+        info(f"final kw_overhours_add: {kw_overhours_add}")
+        info(f"final kw_overhours_add: {HCWR_GLOBALS.SIGN}{abs(kw_overhours_add)}")
+        prompt = "Enter für fortfahren oder N für Nein "
+        answer = input_with_prefill(prompt, "", '')
+        if answer in ("N", "n"):
+            show_process_route()
 
 abwesend += krank
 
@@ -1019,7 +1033,7 @@ if HCWR_GLOBALS.args.verbose or HCWR_GLOBALS.args.dry_run:
     info(f" Mo: {format_decimal(mo/3600)}, Di: {format_decimal(di/3600)}, Mi: {format_decimal(mi/3600)}, Do: {format_decimal(do/3600)}, Fr: {format_decimal(fr/3600)}, Sa: {format_decimal(sa/3600)}, So: {format_decimal(so/3600)}, Std KW = {format_decimal(kw_total/3600)}","",f"Std/Tag KW {HCWR_GLOBALS.args.week}")
 
 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
-    # DBG_BREAK_POINT="hcwr:1002"
+    # DBG_BREAK_POINT="hcwr:1021"
     wai = int(whereami()['line'])
     if int(HCWR_GLOBALS.DBG_BREAK_POINT_LINE) <= wai:
         info(f"HCWR_GLOBALS.CONTRACT_HOURS: {HCWR_GLOBALS.CONTRACT_HOURS}")

@@ -25,8 +25,8 @@ import re
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
 from hcwr_config_mod import get_calendar_week
-from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route
-from hcwr_utils_mod import progress_bar, input_with_prefill
+from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_route, debug_sql
+from hcwr_utils_mod import progress_bar, input_with_prefill, parse_timestamp
 
 def validate_date(date_string):
     fname = get_function_name()
@@ -68,7 +68,17 @@ def get_total_time(project_id, date_str, cursor):
     entries = cursor.fetchall()
 
     # Gesamtzeit in Sekunden berechnen
-    total_time = int(sum((datetime.strptime(entry[3][:19], '%Y-%m-%d %H:%M:%S') - datetime.strptime(entry[2][:19], '%Y-%m-%d %H:%M:%S')).total_seconds() for entry in entries))
+    #total_time = int(sum((datetime.strptime(entry[3][:19], '%Y-%m-%d %H:%M:%S') - datetime.strptime(entry[2][:19], '%Y-%m-%d %H:%M:%S')).total_seconds() for entry in entries))
+    total_time = int(sum(
+        (parse_timestamp(entry[3]) - parse_timestamp(entry[2])).total_seconds()
+        for entry in entries
+    ))
+
+    if HCWR_GLOBALS.DBG_BREAK_POINT:
+        dbg_res = debug_sql(HCWR_GLOBALS.DB_QUERIES.hcwrd_select, [project_id, date, date + timedelta(days=1)])
+        info (f"{dbg_res}")
+        info (f"entries = {entries};")
+        info (f"total_time = {total_time};")
 
     return total_time
 
@@ -214,8 +224,30 @@ def get_kw_overhours_add(conn=None, kw=None, zk=None, za=None, date=None, t=None
 
         if kw:
             total_time = get_weekly_total_time(project_id, date, kw, cursor)
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                info(f"--------------------------------------------------------\nkw {kw}")
+                info(f"kw = {kw}")
+                info(f"date = {date}")
+                info(f"project_id = {project_id}")
+                info(f"total_time = {total_time}")
+                prompt = "Enter für fortfahren oder N für Nein "
+                answer = input_with_prefill(prompt, "", '')
+                if answer in ("N", "n"):
+                    show_process_route()
+                    sys.exit(0)
         else:
             total_time = get_total_time(project_id, date)
+            if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+                info(f"########################################################\nkw {kw}")
+                info(f"kw = {kw}")
+                info(f"date = {date}")
+                info(f"project_id = {project_id}")
+                info(f"total_time = {total_time}")
+                prompt = "Enter für fortfahren oder N für Nein "
+                answer = input_with_prefill(prompt, "", '')
+                if answer in ("N", "n"):
+                    show_process_route()
+                    sys.exit(0)
 
         # ------------------------------------------------------
         # BUGFIX: ZKA Zeitkonto Abzug/Auszahlung
@@ -247,7 +279,6 @@ def get_kw_overhours_add(conn=None, kw=None, zk=None, za=None, date=None, t=None
     weekhours = int(float(HCWR_GLOBALS.CFG.get('General', 'weekhours')) * 3600)
 
     if kw:
-
         overhours = total_work_time - weekhours
 
         p = "+" if overhours >= 0 else "-"

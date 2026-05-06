@@ -941,10 +941,13 @@ def berechne_abwesenheiten(conn, year, week):
     cursor.execute(sql, params)
     rows = cursor.fetchall()
     if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+        info(f"params = {params}")
         info(f"{fname}:\sql = {debug_sql(sql, params)}")
         info(f"rows = {rows}")
     for desc, entry_seconds in rows:
         desc = desc.strip()
+        if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
+            info(f"desc = {desc}")
         for key, keywords in HCWR_GLOBALS.MAPPING.items():
             if any(desc.startswith(word) for word in keywords):
                 if fname in HCWR_GLOBALS.DBG_BREAK_POINT:

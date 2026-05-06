@@ -17,7 +17,7 @@
 # -----------------------------------------------------------------------------------------
 import subprocess
 import sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from decimal import Decimal, InvalidOperation
 import json
@@ -27,7 +27,7 @@ from colorama import Fore, Style
 # Import von eigenem Module
 from hcwr_globals_mod import HCWR_GLOBALS
 from hcwr_dbg_mod import debug, info, warning, get_function_name, debug_sql, show_process_route
-from hcwr_utils_mod import get_wday_short_name, add_decimal_hours, command_exists
+from hcwr_utils_mod import get_wday_short_name, add_decimal_hours, command_exists, parse_timestamp
 
 # set public holidays for this and next week
 
@@ -66,7 +66,7 @@ def insert_holiday_entries(db_connection, year, reference_date=None):
     # Helper: Einfügen eines Feiertags
     def insert_one(date_str, name):
         fn = get_function_name()
-        start_ts = f"{date_str} 00:00:00"
+        start_ts = f"{date_str} 08:00:00"
         wdname = get_wday_short_name(date_str)
         wdayhours = Decimal("8.0")
         if HCWR_GLOBALS.CFG.has_option("Workdays", wdname):
@@ -237,6 +237,10 @@ def is_feiertag(date_obj, cursor):
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"week = {week}")
         
+        # 🔥 RESET für jede Woche
+        HCWR_GLOBALS.ZKA_IN_CURRENT_WEEK = False
+        HCWR_GLOBALS.ZKA_CURRENT_VALUE = 0
+
         hdict = holidays_dict.get(week, [])
         if fname in HCWR_GLOBALS.DBG_BREAK_POINT:
             info(f"hdict = {hdict}")

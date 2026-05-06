@@ -304,4 +304,4 @@ def debug_sql(sql: str, params):
         for p in params:
             final_sql = final_sql.replace("%s", quote(p), 1)
 
-    return final_sql
+    return final_sql + ";"

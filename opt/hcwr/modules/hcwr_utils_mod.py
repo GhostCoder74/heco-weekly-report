@@ -26,7 +26,7 @@ import time
 import itertools
 from colorama import init, Fore, Style
 init()
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from decimal import Decimal, InvalidOperation
 
@@ -37,6 +37,24 @@ from hcwr_dbg_mod import debug, info, warning, get_function_name, show_process_r
 # Set locale for decimal formatting
 locale.setlocale(locale.LC_ALL, '')
 HCWR_GLOBALS.DECIMAL_POINT = locale.localeconv()['decimal_point']
+
+def parse_timestamp(ts: str):
+    """
+    Parst Timestamp robust inkl. Zeitzonen (+02:00 / +00:00 / none)
+    und normalisiert auf UTC.
+    """
+    # ISO Format mit TZ
+    try:
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        # Fallback: ohne TZ
+        dt = datetime.strptime(ts[:19], "%Y-%m-%d %H:%M:%S")
+
+    # Wenn TZ vorhanden → nach UTC konvertieren
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return dt
 
 def hours_to_hms(hours_str, MODE=2):
     fname = get_function_name()

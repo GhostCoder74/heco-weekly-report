@@ -276,6 +276,9 @@ class myGlobals:
 
     OVERHOURS_KW = {}
     ZKA_ADDJUSTMENT = 0
+    # ZKA Wochenkontext (NEU)
+    ZKA_IN_CURRENT_WEEK = False
+    ZKA_CURRENT_VALUE = 0
 
     CONTRACT_HOURS = 0
     KW_REPORT_DIR = None
